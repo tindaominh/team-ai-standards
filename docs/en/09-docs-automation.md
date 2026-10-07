@@ -13,7 +13,7 @@ About ten developers share the same repositories. Documentation goes stale when 
 
 ## 1. Local Claude Code hooks: remind only
 
-- Team hooks may only check or remind (see 05 and `templates/hooks/README.md`).
+- Team hooks may only check or remind (see 05 and `.claude/std/hooks/README.md`).
 - A hook may tell Claude or the developer "the env schema changed; update docs/configuration.md". It never edits the document itself, never commits and never pushes.
 - Reason: a local hook that writes shared files produces unreviewed changes, conflicts between developers and surprises in diffs.
 
@@ -145,9 +145,11 @@ Workflow: `templates/.github/workflows/docs-notify.yml`.
 
 ## 8. Setup checklist for a repository
 
-- [ ] Copy `scripts/generate-docs.mjs`, `scripts/check-docs-updated.mjs` and `scripts/export-env-schema.ts` from the templates; add the `docs:env-schema` npm script.
+`node <path-to-standard>/scripts/adopt.mjs --with-docs` installs the scripts and the `docs-check` and `docs-notify` workflows, and keeps them updated with the standard. The checklist below covers the rest.
+
+- [ ] Run the adoption script with `--with-docs` (or, for an already adopted repository, ask the owner of the standard); add the `docs:env-schema` npm script.
 - [ ] Add markers where generated tables should appear; run the generator; commit.
-- [ ] Copy `docs-check.yml` and create the `docs-not-needed` label.
-- [ ] Copy `CODEOWNERS`, set real owners, enable code-owner review.
-- [ ] Optional: copy `docs-notify.yml` and set `SLACK_WEBHOOK_URL` (or `CHAT_PROVIDER=teams` and `TEAMS_WEBHOOK_URL`).
+- [ ] Create the `docs-not-needed` label.
+- [ ] Fill in the owners in `CODEOWNERS` and enable code-owner review.
+- [ ] Optional: set `SLACK_WEBHOOK_URL` for `docs-notify.yml` (or `CHAT_PROVIDER=teams` and `TEAMS_WEBHOOK_URL`).
 - [ ] Not in the pilot. Later, only after security owner approval: copy `docs-ai-proposal.yml` and `tools/docs-ai/package.json`, commit the lockfile, enable it.

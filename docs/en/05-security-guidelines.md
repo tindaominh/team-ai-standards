@@ -30,8 +30,8 @@ Every repository has `.claude/settings.json` from the team templates. The profil
 
 | Repository type | Profile | File to use | Git writes by AI |
 | --- | --- | --- | --- |
-| **Client repositories** (any client code) | **strict** (default) | `templates/.claude/settings.json` | None. No add, commit, checkout, stash, push. |
-| **Internal repositories** (our own code, no client data) | **standard** | `templates/.claude/settings.standard.json`, renamed to `settings.json` | Local add/commit/branch with your confirmation. Never push. |
+| **Client repositories** (any client code) | **strict** (default) | `adopt.mjs --profile strict` (base: `.claude/std/settings.strict.json`) | None. No add, commit, checkout, stash, push. |
+| **Internal repositories** (our own code, no client data) | **standard** | `adopt.mjs --profile standard` (base: `.claude/std/settings.standard.json`) | Local add/commit/branch with your confirmation. Never push. |
 
 If you are unsure which type a repository is, use **strict**.
 
@@ -64,7 +64,8 @@ Limits of permission rules (from the official Claude Code documentation, "Config
 
 Local overrides:
 
-- Personal changes go in `.claude/settings.local.json` (git-ignored). You may make your own settings stricter. You may not relax the deny list for client repositories without approval from the security owner.
+- `.claude/settings.json` is generated from the base profile and `.claude/project.json`; never edit it by hand. Repository-specific rules go in `permissions` in `.claude/project.json`.
+- Personal changes go in `.claude/settings.local.json` (never committed). The standard's deny and ask rules still apply: the official documentation states that "if a tool is denied at any level, no other level can allow it". What you may and may not set there is listed in 10, "Personal settings (Layer 3)". You may not relax the rules for client repositories without approval from the security owner.
 
 ## 4. Third-party extensions: plugins, skills, hooks, MCP servers
 
@@ -115,7 +116,7 @@ Automatic rejection for client repositories: anything that records tool input/ou
 
 Team hooks may only **check** or **remind**. A team hook must never write or modify repository files, write shared files (docs, CLAUDE.md, settings), commit or push, call the network, download anything, or send data off the machine. Writing and publishing happen through the developer or through CI on a pull request (see 09).
 
-Our optional hooks (`templates/hooks/`) follow this rule: they are deterministic, run only local binaries in check mode, and document what they read and run. Any new hook goes through the same review.
+Our optional hooks (`.claude/std/hooks/`, enabled with `"hooks": true` in `.claude/project.json`) follow this rule: they are deterministic, run only local binaries in check mode, and document what they read and run. Any new hook goes through the same review.
 
 ## 5. Secret handling
 

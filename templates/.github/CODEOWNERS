@@ -1,16 +1,24 @@
-# Owners of shared documentation and AI configuration.
-# Replace the placeholders with GitHub teams or users, and enable
-# "Require review from Code Owners" in the branch protection of the base branch.
+# Code owners. Enable "Require review from Code Owners" in the branch
+# protection of the base branch.
 
-# Documentation
-/docs/                  @<org>/<docs-owners>
-/README.md              @<org>/<docs-owners>
+# ---- Project part (owned by this repository's team) ----
+# TODO(adopt): replace the placeholders with this repository's GitHub teams.
+/docs/                    @<org>/<repo-team>
+/README.md                @<org>/<repo-team>
+/CLAUDE.md                @<org>/<repo-team>
+/.claude/project.json     @<org>/<repo-team>
+/.claude/rules/local/     @<org>/<repo-team>
 
-# AI configuration: changes affect every session in this repository
-/CLAUDE.md              @<org>/<standard-owners>
-/.claude/               @<org>/<standard-owners>
-
-# CI, including the docs checks
-/.github/workflows/     @<org>/<standard-owners>
-/scripts/generate-docs.mjs        @<org>/<standard-owners>
-/scripts/check-docs-updated.mjs   @<org>/<standard-owners>
+# ---- Team AI standard block (managed; keep it at the END of this file) ----
+# BEGIN team-ai-standard
+# Managed by the team AI standard. Do not edit between these markers.
+# Later lines win in CODEOWNERS, so this block must stay last.
+/.claude/rules/std/       @tindaominh
+/.claude/agents/std-*     @tindaominh
+/.claude/skills/std-*/    @tindaominh
+/.claude/std/             @tindaominh
+/.claude/settings.json    @tindaominh
+/.claude/STANDARD_VERSION @tindaominh
+/.github/pull_request_template.md   @tindaominh
+/.github/workflows/std-check.yml    @tindaominh
+# END team-ai-standard

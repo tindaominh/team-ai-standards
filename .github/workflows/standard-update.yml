@@ -111,10 +111,10 @@ jobs:
         with:
           node-version: 22
 
+      # Writes only Layer 1 (standard) files; stack and profile come from the
+      # repository's own .claude/project.json.
       - name: Apply the new version
-        env:
-          PROFILE: ${{ matrix.target.profile }}
-        run: node scripts/sync-standard.mjs --target target --profile "$PROFILE" --summary "$RUNNER_TEMP/summary.md"
+        run: node scripts/sync-standard.mjs --target target --summary "$RUNNER_TEMP/summary.md"
 
       - name: Open update pull request
         env:
@@ -130,7 +130,7 @@ jobs:
           git config user.name "ai-standard-bot"
           git config user.email "ai-standard-bot@users.noreply.github.com"
           git switch -c "$branch"
-          git add .claude .github/pull_request_template.md
+          git add -A
           git commit -m "chore: update team AI standard to v${VERSION}"
           auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
           git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth}" push origin "$branch"

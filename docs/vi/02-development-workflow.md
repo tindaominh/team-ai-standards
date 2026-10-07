@@ -14,11 +14,11 @@ Ticket → Plan → Failing test → Implement → Verify → Fresh-context revi
 | Bước | Ai dẫn dắt | AI hỗ trợ | Đầu ra |
 | --- | --- | --- | --- |
 | 1. Hiểu ticket | Developer | Tóm tắt, liệt kê câu hỏi | Acceptance criteria rõ ràng trên Backlog |
-| 2. Plan | Developer | Skill `plan`, subagent `planner` | File plan đã được duyệt |
-| 3. Test fail trước | Developer + AI | Skill `tdd-workflow` | Test fail đúng lý do |
-| 4. Implement | Developer + AI | Skill `tdd-workflow` | Thay đổi tối thiểu, test pass |
-| 5. Verify | AI chạy, developer kiểm tra | Skill `verification` | Báo cáo READY kèm output thật |
-| 6. Review với context mới | AI reviewer, developer quyết định | `code-review`, `security-review`, `db-migration-review` | Finding, bản sửa hoặc câu trả lời |
+| 2. Plan | Developer | Skill `std-plan`, subagent `std-planner` | File plan đã được duyệt |
+| 3. Test fail trước | Developer + AI | Skill `std-tdd-workflow` | Test fail đúng lý do |
+| 4. Implement | Developer + AI | Skill `std-tdd-workflow` | Thay đổi tối thiểu, test pass |
+| 5. Verify | AI chạy, developer kiểm tra | Skill `std-verification` | Báo cáo READY kèm output thật |
+| 6. Review với context mới | AI reviewer, developer quyết định | `std-code-review`, `std-security-review`, `std-db-migration-review` | Finding, bản sửa hoặc câu trả lời |
 | 7. PR | Developer | Viết nháp mô tả | PR có đủ các mục bằng chứng |
 | 8. Review của con người | Reviewer | Tuỳ chọn | Approve hoặc yêu cầu sửa |
 | 9. Merge | Developer / lead | Không | PR đã merge |
@@ -34,7 +34,7 @@ Ticket → Plan → Failing test → Implement → Verify → Fresh-context revi
 
 - **Bắt buộc khi** thay đổi đụng tới hơn 2 file, một schema, một public API hoặc event, hoặc một marketplace adapter.
 - **Tuỳ chọn** với các bản sửa nhỏ. Ghi "plan not needed: <lý do>" trong PR.
-- Dùng plan mode của Claude Code hoặc skill `plan`. Plan phải:
+- Dùng plan mode của Claude Code hoặc skill `std-plan`. Plan phải:
   - chỉ ra code có sẵn cần làm theo,
   - liệt kê file và task, mỗi task kèm một lệnh chứng minh nó chạy đúng,
   - nêu ảnh hưởng tới database và API bên ngoài,
@@ -54,14 +54,14 @@ Ticket → Plan → Failing test → Implement → Verify → Fresh-context revi
 
 ### 5. Verify
 
-- Chạy skill `verification`: build, typecheck, lint, unit test, integration test (nếu thay đổi phần truy cập dữ liệu), kiểm tra migration (nếu có), kiểm tra diff.
+- Chạy skill `std-verification`: build, typecheck, lint, unit test, integration test (nếu thay đổi phần truy cập dữ liệu), kiểm tra migration (nếu có), kiểm tra diff.
 - Kết quả phải là **READY**. Mọi kết quả trong báo cáo phải đến từ lần chạy thật trong session này.
 
 ### 6. Review với context mới
 
-- Chạy skill `code-review`. Reviewer là một subagent riêng, chỉ thấy diff, các file thay đổi và plan, không thấy cuộc hội thoại đã viết ra code. Nhờ vậy reviewer không bị cuốn theo lập luận của người viết.
-- Thêm `security-review` khi đụng tới auth, credential, webhook, outbound HTTP, S3/file, IAM/infra hoặc dữ liệu cá nhân.
-- Thêm `db-migration-review` khi có migration hoặc thay đổi entity.
+- Chạy skill `std-code-review`. Reviewer là một subagent riêng, chỉ thấy diff, các file thay đổi và plan, không thấy cuộc hội thoại đã viết ra code. Nhờ vậy reviewer không bị cuốn theo lập luận của người viết.
+- Thêm `std-security-review` khi đụng tới auth, credential, webhook, outbound HTTP, S3/file, IAM/infra hoặc dữ liệu cá nhân.
+- Thêm `std-db-migration-review` khi có migration hoặc thay đổi entity.
 - Finding mức CRITICAL và HIGH được kiểm tra lại lần thứ hai một cách độc lập. Sau đó developer sửa từng finding đã được xác nhận, hoặc ghi rõ vì sao nó không phải là vấn đề.
 - Sau khi sửa, chạy lại verification.
 
@@ -100,13 +100,13 @@ Mô tả của mỗi PR gồm:
 
 | Bằng chứng | Lấy từ đâu | Bắt buộc khi |
 | --- | --- | --- |
-| Link plan hoặc "not needed: lý do" | Skill `plan` | Luôn luôn |
-| Test fail (lệnh + các dòng chính) | `tdd-workflow` | Thay đổi behaviour |
-| Test pass (cùng lệnh) | `tdd-workflow` | Thay đổi behaviour |
-| Bảng verification | `verification` | Luôn luôn |
-| Tóm tắt AI review (tìm thấy / xác nhận / đã sửa / đã trả lời) | `code-review` | Khi có dùng AI |
-| Security review | `security-review` | Các vùng kích hoạt |
-| Migration review | `db-migration-review` | Có migration |
+| Link plan hoặc "not needed: lý do" | Skill `std-plan` | Luôn luôn |
+| Test fail (lệnh + các dòng chính) | `std-tdd-workflow` | Thay đổi behaviour |
+| Test pass (cùng lệnh) | `std-tdd-workflow` | Thay đổi behaviour |
+| Bảng verification | `std-verification` | Luôn luôn |
+| Tóm tắt AI review (tìm thấy / xác nhận / đã sửa / đã trả lời) | `std-code-review` | Khi có dùng AI |
+| Security review | `std-security-review` | Các vùng kích hoạt |
+| Migration review | `std-db-migration-review` | Có migration |
 
 Bằng chứng phải là output thật. Reviewer có thể yêu cầu chạy lại bất kỳ lệnh nào. Bịa bằng chứng bị coi là vi phạm quy trình nghiêm trọng.
 

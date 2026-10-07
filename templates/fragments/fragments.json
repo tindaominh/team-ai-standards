@@ -1,0 +1,145 @@
+{
+  "description": "Registry of stack fragments the team uses. To add one, follow docs/en/11-adding-a-stack-fragment.md. Files follow the convention <folder>/<value>/rule.md (required), tdd.md and migration.md (optional). framework \"none\" has its own fragment (Node.js service without a web framework); dataAccess \"none\" means no database and installs no fragment. Dependencies listed under \"unsupported\" have no fragment: adoption stops when it finds them unless that dimension is given explicitly, and the override is recorded in .claude/project.json as acknowledgedUnsupported.",
+  "runtime": "node",
+  "ruleWordLimit": 150,
+  "dimensions": {
+    "framework": {
+      "folder": "framework",
+      "multiple": false,
+      "values": {
+        "nestjs": {
+          "label": "NestJS",
+          "detect": [
+            "@nestjs/core"
+          ],
+          "outranks": [
+            "express"
+          ]
+        },
+        "express": {
+          "label": "Express",
+          "detect": [
+            "express"
+          ]
+        },
+        "none": {
+          "label": "no web framework (workers, consumers, CLI)",
+          "detect": []
+        }
+      }
+    },
+    "databases": {
+      "folder": "database",
+      "multiple": true,
+      "values": {
+        "mysql": {
+          "label": "MySQL",
+          "detect": [
+            "mysql2",
+            "mysql"
+          ],
+          "vars": {
+            "DB_TYPE": "mysql",
+            "DB_PORT": "3306"
+          }
+        },
+        "postgres": {
+          "label": "PostgreSQL",
+          "detect": [
+            "pg",
+            "postgres"
+          ],
+          "vars": {
+            "DB_TYPE": "postgres",
+            "DB_PORT": "5432"
+          }
+        }
+      }
+    },
+    "dataAccess": {
+      "folder": "data-access",
+      "multiple": false,
+      "values": {
+        "typeorm": {
+          "label": "TypeORM",
+          "detect": [
+            "typeorm",
+            "@nestjs/typeorm"
+          ]
+        },
+        "raw": {
+          "label": "raw driver (mysql2 / pg)",
+          "detect": []
+        },
+        "none": {
+          "label": "no database (no fragment)",
+          "detect": []
+        }
+      }
+    },
+    "optional": {
+      "folder": "optional",
+      "multiple": true,
+      "values": {
+        "aws": {
+          "label": "AWS infrastructure rule",
+          "detect": [
+            "@aws-sdk/*",
+            "aws-sdk",
+            "aws-cdk-lib"
+          ],
+          "detectPaths": [
+            "infra",
+            "cdk",
+            "terraform"
+          ]
+        }
+      }
+    }
+  },
+  "unsupported": {
+    "fastify": "framework",
+    "koa": "framework",
+    "@hapi/hapi": "framework",
+    "@prisma/client": "dataAccess",
+    "prisma": "dataAccess",
+    "drizzle-orm": "dataAccess",
+    "kysely": "dataAccess",
+    "knex": "dataAccess",
+    "sequelize": "dataAccess",
+    "mongoose": "dataAccess",
+    "mongodb": "dataAccess"
+  },
+  "aliases": {
+    "nestjs-mysql": {
+      "framework": "nestjs",
+      "databases": [
+        "mysql"
+      ],
+      "dataAccess": "typeorm",
+      "optional": [
+        "aws"
+      ]
+    },
+    "nestjs-postgres": {
+      "framework": "nestjs",
+      "databases": [
+        "postgres"
+      ],
+      "dataAccess": "typeorm",
+      "optional": [
+        "aws"
+      ]
+    },
+    "node-postgres": {
+      "framework": "none",
+      "databases": [
+        "postgres"
+      ],
+      "dataAccess": "typeorm",
+      "optional": [
+        "aws"
+      ]
+    }
+  }
+}

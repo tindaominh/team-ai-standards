@@ -1,143 +1,213 @@
 #!/usr/bin/env node
-// Updates one project repository checkout to the current version of the team
+// Updates one adopted project repository to the current version of the team
 // standard. Used by .github/workflows/standard-update.yml; can also be run by
 // hand. It never commits or pushes.
 //
-//   node scripts/sync-standard.mjs --target <dir> --profile strict|standard [--summary <file>]
+//   node scripts/sync-standard.mjs --target <dir> [--summary <file>]
 //
-// What it changes in the target:
-//   - Managed files (rules, agents, team skills, PR template): overwritten with
-//     the template version.
-//   - Hooks: updated only if the repository already uses them (opt-in).
-//   - .claude/settings.json: missing deny and ask rules from the profile are
-//     ADDED. Nothing is removed and allow rules are never changed; differences
-//     are listed in the summary for the repository owner.
-//   - .claude/STANDARD_VERSION: set to the new version.
-// What it never changes: CLAUDE.md, settings allow rules, repository-specific
-// rules or skills, anything outside .claude/ and .github/pull_request_template.md.
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+// Writes ONLY Layer 1 (STANDARD) files:
+//   .claude/rules/std/**, .claude/agents/std-*, .claude/skills/std-*/**, .claude/std/**,
+//   .claude/STANDARD_VERSION, .github/workflows/std-check.yml, optional groups
+//   listed in the manifest, the PR template and the CODEOWNERS block (only
+//   where the managed marker is present), and .claude/settings.json
+//   (regenerated from the new base profile and the repository's project.json).
+// Never touches Layer 2 (CLAUDE.md, .claude/project.json, .claude/rules/local/**)
+// or Layer 3 (.claude/settings.local.json). The stack selection and profile are
+// read from the repository's .claude/project.json; fragments that are no longer
+// selected are removed (they are Layer 1 files listed in the manifest).
+import { execFileSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import {
+  CODEOWNERS_KEY, CODEOWNERS_LOCATIONS, MANAGED_MARKER, OPTIONAL, codeownersPlaceholders, codeownersTemplate,
+  coreFiles, findBlock, hash, normalize, optionalFiles, prTemplate, summary, unsupportedIn, validate, version
+} from './lib/standard.mjs';
 
-const ROOT = new URL('..', import.meta.url).pathname;
-const T = join(ROOT, 'templates');
-
-function arg(name) {
+const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
   return i > -1 ? process.argv[i + 1] : undefined;
-}
+};
 const target = arg('target');
-const profile = arg('profile') || 'strict';
 const summaryFile = arg('summary');
-if (!target || !['strict', 'standard'].includes(profile)) {
-  console.error('usage: sync-standard.mjs --target <dir> --profile strict|standard [--summary <file>]');
+if (!target) {
+  console.error('usage: sync-standard.mjs --target <dir> [--summary <file>]');
   process.exit(2);
 }
+const exists = (p) => existsSync(join(target, p));
+const read = (p) => readFileSync(join(target, p), 'utf8');
+const write = (p, text) => {
+  mkdirSync(dirname(join(target, p)), { recursive: true });
+  writeFileSync(join(target, p), text);
+};
 
-const version = readFileSync(join(T, '.claude/STANDARD_VERSION'), 'utf8').trim();
-const walk = (dir) => (existsSync(dir) ? readdirSync(dir).flatMap((n) => {
-  const p = join(dir, n);
-  return statSync(p).isDirectory() ? walk(p) : [p];
-}) : []);
+if (!exists('.claude/project.json')) {
+  console.error(`sync: ${target} has not adopted the standard (.claude/project.json missing). Run scripts/adopt.mjs there first.`);
+  process.exit(1);
+}
+const placeholders = codeownersPlaceholders();
+if (placeholders.length) {
+  console.error(`sync: templates/.github/CODEOWNERS still has placeholder owners (${placeholders.join(', ')}). Set the real team before updating repositories.`);
+  process.exit(2);
+}
+const project = JSON.parse(read('.claude/project.json'));
+let selection;
+try {
+  selection = normalize(project.stack);
+} catch (err) {
+  console.error(`sync: .claude/project.json: ${err.message}`);
+  process.exit(1);
+}
+const { errors } = validate(selection);
+if (errors.length) {
+  console.error(`sync: .claude/project.json has an invalid stack selection:\n  ${errors.join('\n  ')}`);
+  process.exit(1);
+}
+const previous = exists('.claude/STANDARD_VERSION') ? read('.claude/STANDARD_VERSION').trim() : '(none)';
+const oldManifest = exists('.claude/std/manifest.json') ? JSON.parse(read('.claude/std/manifest.json')) : { files: {} };
+const oldFiles = Object.keys(oldManifest.files || {});
 
-const lines = [];
-const changed = [];
+const updated = [];
+const removed = [];
+const notManaged = [];
+const manifest = {};
 
-function copyManaged(srcRel, dstRel = srcRel) {
-  const src = join(T, srcRel);
-  const dst = join(target, dstRel);
-  const next = readFileSync(src);
-  if (existsSync(dst) && Buffer.compare(readFileSync(dst), next) === 0) return;
-  mkdirSync(dirname(dst), { recursive: true });
-  copyFileSync(src, dst);
-  changed.push(dstRel);
+// 1. Core files for the repository's stack, plus optional groups it installed
+const wanted = coreFiles(selection);
+for (const [group, entries] of Object.entries(OPTIONAL)) {
+  if (entries.some(([, dest]) => oldFiles.includes(dest))) wanted.push(...optionalFiles(group));
+}
+const wantedPaths = new Set(wanted.map((f) => f.path));
+for (const f of wanted) {
+  if (f.path === '.claude/std/manifest.json') continue;
+  if (!exists(f.path) || read(f.path) !== f.content) {
+    write(f.path, f.content);
+    updated.push(f.path);
+  }
+  manifest[f.path] = hash(f.content);
 }
 
-// 1. Managed files
-const managed = [
-  ...walk(join(T, '.claude/rules')),
-  ...walk(join(T, '.claude/agents')),
-  ...walk(join(T, '.claude/skills'))
-].map((p) => relative(T, p));
-managed.forEach((p) => copyManaged(p));
-copyManaged('.github/pull_request_template.md');
-
-// Files in managed folders that the standard does not ship (repository-specific or removed upstream)
-const managedSet = new Set(managed);
-const teamSkills = new Set(readdirSync(join(T, '.claude/skills')));
-const extras = [
-  ...walk(join(target, '.claude/rules/common')),
-  ...walk(join(target, '.claude/rules/typescript')),
-  ...walk(join(target, '.claude/agents')),
-  ...walk(join(target, '.claude/skills')).filter((p) => teamSkills.has(relative(join(target, '.claude/skills'), p).split('/')[0]))
-].map((p) => relative(target, p)).filter((p) => !managedSet.has(p));
-
-// 2. Hooks: only if the repository opted in
-const hookDir = join(target, '.claude/hooks');
-const hooksUsed = existsSync(hookDir);
-if (hooksUsed) {
-  for (const f of readdirSync(join(T, 'hooks')).filter((n) => n.endsWith('.cjs'))) {
-    copyManaged(join('hooks', f), join('.claude/hooks', f));
+// 2. Standard files removed upstream (only files the manifest says we own)
+for (const path of oldFiles) {
+  if (path.includes('#') || path === '.claude/settings.json' || path === '.github/pull_request_template.md') continue;
+  if (!wantedPaths.has(path) && exists(path)) {
+    rmSync(join(target, path));
+    removed.push(path);
   }
 }
 
-// 3. Settings: add missing deny/ask rules, never remove
-const settingsPath = join(target, '.claude/settings.json');
-const tplSettings = JSON.parse(readFileSync(join(T, '.claude', profile === 'strict' ? 'settings.json' : 'settings.standard.json'), 'utf8'));
-let addedRules = [];
-let notInTemplate = [];
-if (existsSync(settingsPath)) {
-  const cur = JSON.parse(readFileSync(settingsPath, 'utf8'));
-  cur.permissions = cur.permissions || {};
-  for (const key of ['deny', 'ask']) {
-    const have = new Set(cur.permissions[key] || []);
-    const want = tplSettings.permissions[key];
-    const add = want.filter((r) => !have.has(r));
-    if (add.length) {
-      cur.permissions[key] = [...(cur.permissions[key] || []), ...add];
-      addedRules = addedRules.concat(add.map((r) => `${key}: \`${r}\``));
+// 3. PR template: managed only when it carries the marker
+const pr = prTemplate();
+if (exists('.github/pull_request_template.md')) {
+  if (read('.github/pull_request_template.md').includes(MANAGED_MARKER)) {
+    if (read('.github/pull_request_template.md') !== pr) {
+      write('.github/pull_request_template.md', pr);
+      updated.push('.github/pull_request_template.md');
     }
-    const wantSet = new Set(want);
-    notInTemplate = notInTemplate.concat([...have].filter((r) => !wantSet.has(r)).map((r) => `${key}: \`${r}\``));
-  }
-  if (addedRules.length) {
-    writeFileSync(settingsPath, `${JSON.stringify(cur, null, 2)}\n`);
-    changed.push('.claude/settings.json');
+    manifest['.github/pull_request_template.md'] = hash(pr);
+  } else {
+    notManaged.push('`.github/pull_request_template.md` has no managed marker (the adoption proposal was not merged); not updated.');
   }
 } else {
-  lines.push('- `.claude/settings.json` not found: install it from the template by hand (profile: ' + profile + ').');
+  write('.github/pull_request_template.md', pr);
+  updated.push('.github/pull_request_template.md');
+  manifest['.github/pull_request_template.md'] = hash(pr);
 }
 
-// 4. Version file
-const versionPath = join(target, '.claude/STANDARD_VERSION');
-const previous = existsSync(versionPath) ? readFileSync(versionPath, 'utf8').trim() : '(none)';
-if (previous !== version) {
-  mkdirSync(dirname(versionPath), { recursive: true });
-  writeFileSync(versionPath, `${version}\n`);
-  changed.push('.claude/STANDARD_VERSION');
+// 4. CODEOWNERS: only the block between the markers
+const block = codeownersTemplate().block;
+const coPath = CODEOWNERS_LOCATIONS.find(exists);
+if (coPath) {
+  const text = read(coPath);
+  const found = findBlock(text);
+  if (found) {
+    const next = text.slice(0, found.start) + block + text.slice(found.end);
+    if (next !== text) {
+      write(coPath, next);
+      updated.push(`${coPath} (standard block only)`);
+    }
+    manifest[`${coPath}${CODEOWNERS_KEY}`] = hash(block);
+  } else {
+    notManaged.push(`\`${coPath}\` has no team-ai-standard block; not updated.`);
+  }
+} else {
+  notManaged.push('No CODEOWNERS file; the standard block was not added (CODEOWNERS also holds project owners).');
 }
 
-// Summary for the pull request body
+// 5. settings.json from the new base and the repository's project.json (CLAUDE.md untouched)
+const settingsBefore = exists('.claude/settings.json') ? read('.claude/settings.json') : '{}';
+execFileSync('node', [join(target, '.claude/std/compose-settings.mjs'), '--root', target, '--skip-claude-md'], { stdio: ['ignore', 'ignore', 'inherit'] });
+const settingsAfter = read('.claude/settings.json');
+if (settingsAfter !== settingsBefore) updated.push('.claude/settings.json (regenerated)');
+manifest['.claude/settings.json'] = hash(settingsAfter);
+// Does the new release change the generated command table in CLAUDE.md? (a MAJOR change)
+let tableAction = null;
+if (exists('CLAUDE.md') && read('CLAUDE.md').includes('<!-- BEGIN GENERATED: std-commands -->')) {
+  const tmp = mkdtempSync(join(tmpdir(), 'std-sync-'));
+  copyFileSync(join(target, 'CLAUDE.md'), join(tmp, 'CLAUDE.md'));
+  execFileSync('node', [join(target, '.claude/std/compose-settings.mjs'), '--root', target, '--settings-out', join(tmp, 'settings.json'), '--claude-md', join(tmp, 'CLAUDE.md')], { stdio: 'ignore' });
+  if (readFileSync(join(tmp, 'CLAUDE.md'), 'utf8') !== read('CLAUDE.md')) tableAction = true;
+  rmSync(tmp, { recursive: true, force: true });
+}
+const rules = (text) => {
+  try {
+    const p = JSON.parse(text).permissions || {};
+    return new Set(['allow', 'ask', 'deny'].flatMap((k) => (p[k] || []).map((r) => `${k}: \`${r}\``)));
+  } catch {
+    return new Set();
+  }
+};
+const before = rules(settingsBefore);
+const after = rules(settingsAfter);
+const addedRules = [...after].filter((r) => !before.has(r));
+const removedRules = [...before].filter((r) => !after.has(r));
+
+// Dependencies without a fragment that the repository has not acknowledged
+const acknowledged = new Set(project.acknowledgedUnsupported || []);
+for (const u of unsupportedIn(target)) {
+  if (!acknowledged.has(u.dep)) {
+    notManaged.push(`\`${u.dep}\` has no ${u.dimension === 'dataAccess' ? 'data-access' : u.dimension} fragment in the standard and is not acknowledged. Add a fragment (docs/en/11-adding-a-stack-fragment.md), or if the stack selection is right, add it to \`acknowledgedUnsupported\` in \`.claude/project.json\`.`);
+  }
+}
+
+// 6. Version and manifest
+write('.claude/std/manifest.json', `${JSON.stringify({ standardVersion: version(), stack: selection, files: Object.fromEntries(Object.entries(manifest).sort()) }, null, 2)}\n`);
+
+const list = (items) => (items.length ? items.map((i) => `- ${i.startsWith('`') || i.includes(' ') ? i : `\`${i}\``}`) : ['- none']);
 const out = [
-  `## Team AI standard ${previous} → ${version}`,
+  `## Team AI standard ${previous} → ${version()}`,
   '',
-  `Profile: **${profile}**. Read the standard's CHANGELOG for this release before merging.`,
+  `Stack **${summary(selection)}**, profile **${project.profile}** (from \`.claude/project.json\`). Read the standard's CHANGELOG for this release before merging.`,
+  '',
+  'Only standard files (Layer 1) are changed. `CLAUDE.md`, `.claude/project.json`, `.claude/rules/local/` and personal settings are not touched.',
   '',
   '### Files updated',
   '',
-  ...(changed.length ? changed.map((f) => `- \`${f}\``) : ['- none']),
+  ...list(updated),
   '',
-  '### Settings rules added (deny/ask only)',
+  '### Standard files removed upstream',
   '',
-  ...(addedRules.length ? addedRules.map((r) => `- ${r}`) : ['- none']),
+  ...list(removed),
   '',
+  '### Permission rule changes in `.claude/settings.json`',
+  '',
+  ...(addedRules.length || removedRules.length ? [...addedRules.map((r) => `- added ${r}`), ...removedRules.map((r) => `- removed ${r}`)] : ['- none']),
+  '',
+  ...(tableAction ? [
+    '### Action required: regenerate the command table in CLAUDE.md',
+    '',
+    'This release changes the format of the generated command table (a MAJOR change of the standard). `CLAUDE.md` belongs to this repository, so this update does not edit it, and `std-check` fails on this PR until the table matches. On this branch, run:',
+    '',
+    '```bash',
+    'node .claude/std/compose-settings.mjs',
+    '```',
+    '',
+    'and commit the change to `CLAUDE.md`. It only rewrites the text between the `std-commands` markers, from `.claude/project.json`.',
+    ''
+  ] : []),
   '### Review by hand',
   '',
-  '- `CLAUDE.md` is never changed by this job. Compare it with the template if the CHANGELOG mentions CLAUDE.md.',
-  '- Command placeholders in new settings rules (for example `<unit-test-cmd>`) must be replaced with this repository\'s commands.',
-  ...(notInTemplate.length ? ['- Settings rules in this repository that are not in the template (repository-specific, or removed upstream; remove only if you agree):', ...notInTemplate.map((r) => `  - ${r}`)] : []),
-  ...(extras.length ? ['- Files in managed folders that the standard does not ship (repository-specific, or removed upstream):', ...extras.map((f) => `  - \`${f}\``)] : []),
-  ...(hooksUsed ? [] : ['- Hooks are not enabled in this repository; they were not touched.']),
-  ...lines,
+  ...(notManaged.length ? notManaged.map((n) => `- ${n}`) : ['- nothing']),
   ''
 ].join('\n');
 

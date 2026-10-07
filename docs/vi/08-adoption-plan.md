@@ -39,7 +39,7 @@ Mục tiêu được đặt vào cuối Wave 1, dựa trên số liệu của wa
 
 - [ ] Đã chọn repository pilot và được tech lead duyệt.
 - [ ] Đã thu thập chỉ số baseline.
-- [ ] Repository đã cài bộ tiêu chuẩn: CLAUDE.md với bảng lệnh đã điền, settings profile `standard` với các placeholder lệnh đã được thay, `.claude/STANDARD_VERSION`, rule, agent, skill, PR template.
+- [ ] Repository đã cài bộ tiêu chuẩn bằng `scripts/adopt.mjs --profile standard` (00-quickstart): đã điền các mục `TODO(adopt)`, đã đặt lệnh trong `.claude/project.json`, `compose-settings.mjs --check` pass.
 - [ ] Claude Code có trong bảng công cụ được phê duyệt với trạng thái "Under evaluation (Đang đánh giá)", ghi rõ repository pilot.
 - [ ] Cả hai người áp dụng sớm đã đọc tài liệu 01–05 và có một buổi walkthrough 1 tiếng với owner của bộ tiêu chuẩn.
 
@@ -100,7 +100,7 @@ Mục tiêu được đặt vào cuối Wave 1, dựa trên số liệu của wa
 
 **Hoạt động:**
 
-- Cài bộ tiêu chuẩn vào từng repository được phép. Mỗi repository một PR, review như code.
+- Cài bộ tiêu chuẩn vào từng repository được phép bằng `scripts/adopt.mjs` (khoảng 30 phút mỗi repository). Mỗi repository một PR, review như code.
 - Từ đó trở đi, các repository nhận version mới qua các PR cập nhật được mô tả trong tài liệu 10.
 - Các champion sẵn sàng trả lời câu hỏi; họp đồng bộ hằng tháng.
 
