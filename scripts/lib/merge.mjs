@@ -8,27 +8,83 @@
 const KNOWN_TOP = new Set(['$schema', 'permissions', 'enableAllProjectMcpServers', 'cleanupPeriodDays']);
 const KNOWN_PERMISSIONS = new Set(['allow', 'ask', 'deny', 'disableBypassPermissionsMode']);
 
-// "Tool(spec)" or "Tool". A pattern matches a rule when the tools are equal and
-// the pattern's spec (with * as a wildcard) covers the rule's whole spec.
+// "Tool(spec)" or "Tool". Matching follows the Claude Code permissions docs
+// (https://code.claude.com/docs/en/permissions): "A `*` at the end, with a space
+// before it, also matches the bare command" when it is the only wildcard, and a
+// trailing ":*" is the same as " *".
 const parse = (rule) => {
   const m = /^([^(]+)(?:\((.*)\))?$/.exec(rule);
   return m ? { tool: m[1], spec: m[2] } : { tool: rule, spec: undefined };
 };
+const normalizeSpec = (spec) => (spec.endsWith(':*') ? `${spec.slice(0, -2)} *` : spec);
+const bareOf = (spec) => (spec.endsWith(' *') && spec.indexOf('*') === spec.length - 1 ? spec.slice(0, -2) : null);
+// The texts a spec stands for: itself, plus the bare command for a trailing " *".
+const alternatives = (spec) => {
+  const s = normalizeSpec(spec);
+  const bare = bareOf(s);
+  return bare === null ? [s] : [s, bare];
+};
+const globRe = (spec) => new RegExp(`^${spec.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`);
+
+// A pattern covers a rule when the tools are equal and everything the rule
+// matches is matched by the pattern. A "*" in the rule is treated literally, so a
+// broader rule (Bash(git status*)) is not covered by a narrower pattern.
 export function covers(pattern, rule) {
   const p = parse(pattern);
   const r = parse(rule);
   if (p.tool !== r.tool) return false;
   if (p.spec === undefined) return true;
   if (r.spec === undefined) return false;
-  const re = new RegExp(`^${p.spec.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`);
-  return re.test(r.spec);
+  return alternatives(r.spec).every((text) => alternatives(p.spec).some((s) => globRe(s).test(text)));
+}
+
+// Can one command match both rules? Glob intersection where * is the only wildcard.
+const globsIntersect = (a, b) => {
+  const memo = new Map();
+  const f = (i, j) => {
+    const key = i * (b.length + 1) + j;
+    if (memo.has(key)) return memo.get(key);
+    let ok;
+    if (i === a.length && j === b.length) ok = true;
+    else if (a[i] === '*') ok = f(i + 1, j) || (j < b.length && f(i, j + 1));
+    else if (b[j] === '*') ok = f(i, j + 1) || (i < a.length && f(i + 1, j));
+    else ok = i < a.length && j < b.length && a[i] === b[j] && f(i + 1, j + 1);
+    memo.set(key, ok);
+    return ok;
+  };
+  return f(0, 0);
+};
+export function overlaps(ruleA, ruleB) {
+  const a = parse(ruleA);
+  const b = parse(ruleB);
+  if (a.tool !== b.tool) return false;
+  if (a.spec === undefined || b.spec === undefined) return true;
+  return alternatives(a.spec).some((x) => alternatives(b.spec).some((y) => globsIntersect(x, y)));
+}
+
+// A hint for an allow rule that needs a human decision.
+const HINTS = [
+  ['uses cloud credentials', /^(?:(?:npx|npm(?: run| exec)?|pnpm(?: run| exec| dlx)?|yarn(?: run)?) )?(?:cdk|aws|terraform|sam|serverless|sls|pulumi|gcloud|az|firebase|vercel|netlify|copilot|eb)\b/],
+  ['runs a long-lived process', /(?:^|[ :])(?:dev|start|serve|watch|preview)\b|--watch\b|^(?:vite|next dev|nest start|nodemon)\b/],
+  ['read-only', /^(?:ls|cat|head|tail|grep|rg|find|tree|wc|pwd|which|du|df|stat|git (?:status|diff|log|show|blame|rev-parse|merge-base|ls-files|branch --show-current))\b|--version\b|--help\b|[ :](?:list|ls|show|outdated|status)\b/]
+];
+export function allowHint(rule) {
+  const { tool, spec } = parse(rule);
+  if (['Read', 'Grep', 'Glob', 'LS'].includes(tool)) return 'read-only';
+  if (tool !== 'Bash' || spec === undefined) return null;
+  const hit = HINTS.find(([, re]) => re.test(normalizeSpec(spec)));
+  return hit ? hit[0] : null;
 }
 
 // existingText: current .claude/settings.json. generated: settings the profile
-// alone would produce (with the project's commands). allowChoice: 'carry' | 'drop' | undefined.
-// Returns { extra: {allow, ask, deny}, carried, dropped, replaced, decisions }.
-export function mergeSettings(existingText, generated, allowChoice) {
-  const result = { extra: { allow: [], ask: [], deny: [] }, carried: [], dropped: [], replaced: [], decisions: [] };
+// alone would produce (with the project's commands). choices: per-rule allow
+// decisions { carry: [rule], drop: [rule], dropRest: boolean }.
+// Returns { extra: {allow, ask, deny}, carried, dropped, replaced, decisions, allowReport }.
+// Decisions about allow rules have kind 'allow'; they can never be proposed away.
+export function mergeSettings(existingText, generated, choices = {}) {
+  const carry = choices.carry || [];
+  const drop = choices.drop || [];
+  const result = { extra: { allow: [], ask: [], deny: [] }, carried: [], dropped: [], replaced: [], decisions: [], allowReport: [] };
   let existing;
   try {
     existing = JSON.parse(existingText);
@@ -48,7 +104,6 @@ export function mergeSettings(existingText, generated, allowChoice) {
   const g = generated.permissions;
   const p = existing.permissions || {};
   const deniedBy = (rule) => g.deny.find((d) => covers(d, rule));
-  const askedBy = (rule) => g.ask.find((a) => covers(a, rule));
 
   for (const rule of p.deny || []) {
     if (g.deny.includes(rule)) continue;
@@ -62,23 +117,40 @@ export function mergeSettings(existingText, generated, allowChoice) {
     result.extra.ask.push(rule);
     result.carried.push({ list: 'ask', rule, reason: 'project-specific ask (stricter, kept)' });
   }
-  const pendingAllow = [];
-  for (const rule of p.allow || []) {
-    if (g.allow.includes(rule)) continue;
-    const d = deniedBy(rule);
-    if (d) { result.dropped.push({ list: 'allow', rule, reason: `conflicts with the profile deny ${d}` }); continue; }
-    const a = askedBy(rule);
-    if (a) { result.dropped.push({ list: 'allow', rule, reason: `the profile asks (${a}); ask wins, so the allow had no effect` }); continue; }
-    pendingAllow.push(rule);
+
+  // allow: covered by the profile, unsafe (overlaps a profile ask or deny), or a
+  // per-rule human decision.
+  const existingAllow = p.allow || [];
+  for (const [flag, rules] of [['--carry-allow', carry], ['--drop-allow', drop]]) {
+    for (const rule of rules.filter((r) => !existingAllow.includes(r))) {
+      result.decisions.push({ kind: 'allow', file: '.claude/settings.json', what: `has no allow rule ${rule} (named with ${flag})`, resolve: 'name the rule exactly as it is written in .claude/settings.json' });
+    }
   }
-  if (pendingAllow.length) {
-    if (allowChoice === 'carry') {
-      result.extra.allow.push(...pendingAllow);
-      for (const rule of pendingAllow) result.carried.push({ list: 'allow', rule, reason: 'confirmed with --carry-allow' });
-    } else if (allowChoice === 'drop') {
-      for (const rule of pendingAllow) result.dropped.push({ list: 'allow', rule, reason: 'dropped with --drop-allow' });
+  for (const rule of existingAllow) {
+    const by = g.allow.includes(rule) ? rule : g.allow.find((a) => covers(a, rule));
+    if (by) { result.allowReport.push({ rule, status: 'covered', by }); continue; }
+    const d = g.deny.find((x) => overlaps(x, rule));
+    const a = d ? null : g.ask.find((x) => overlaps(x, rule));
+    if (d || a) {
+      const reason = d ? `conflicts with the profile deny ${d}` : `overlaps the profile ask ${a}; ask wins, so the allow cannot be carried`;
+      result.dropped.push({ list: 'allow', rule, reason });
+      result.allowReport.push({ rule, status: 'unsafe', by: d || a, list: d ? 'deny' : 'ask' });
+      if (carry.includes(rule)) {
+        result.decisions.push({ kind: 'allow', file: '.claude/settings.json', what: `allow ${rule} cannot be carried: it overlaps the profile ${d ? 'deny' : 'ask'} ${d || a}`, resolve: `remove --carry-allow "${rule}"; the rule is dropped` });
+      }
+      continue;
+    }
+    const hint = allowHint(rule);
+    if (carry.includes(rule)) {
+      result.extra.allow.push(rule);
+      result.carried.push({ list: 'allow', rule, reason: 'confirmed with --carry-allow' });
+      result.allowReport.push({ rule, status: 'carried', hint });
+    } else if (drop.includes(rule) || choices.dropRest) {
+      result.dropped.push({ list: 'allow', rule, reason: drop.includes(rule) ? 'dropped with --drop-allow' : 'dropped with --drop-allow-rest' });
+      result.allowReport.push({ rule, status: 'dropped', hint });
     } else {
-      result.decisions.push({ file: '.claude/settings.json', what: `allows what the profile does not: ${pendingAllow.join(', ')}`, resolve: 'pass --carry-allow to keep them in .claude/project.json, or --drop-allow' });
+      result.allowReport.push({ rule, status: 'needs-decision', hint });
+      result.decisions.push({ kind: 'allow', file: '.claude/settings.json', what: `allows what the profile does not: ${rule}${hint ? ` (${hint})` : ''}`, resolve: `--carry-allow "${rule}" keeps it in .claude/project.json, --drop-allow "${rule}" drops it (or --drop-allow-rest for every undecided rule)` });
     }
   }
   for (const key of ['enableAllProjectMcpServers', 'cleanupPeriodDays']) {

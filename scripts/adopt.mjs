@@ -46,8 +46,9 @@ if (argErrors.length) die(2, argErrors.join('\n  '));
 const DRY = Boolean(opts['dry-run']);
 const YES = Boolean(opts.yes);
 const TARGET = resolve(opts.target || process.cwd());
-if (opts['carry-allow'] && opts['drop-allow']) die(2, 'pass either --carry-allow or --drop-allow, not both.');
-const allowChoice = opts['carry-allow'] ? 'carry' : opts['drop-allow'] ? 'drop' : undefined;
+const allowChoices = { carry: opts['carry-allow'] || [], drop: opts['drop-allow'] || [], dropRest: Boolean(opts['drop-allow-rest']) };
+const bothWays = allowChoices.carry.filter((r) => allowChoices.drop.includes(r));
+if (bothWays.length) die(2, `a rule cannot be both carried and dropped: ${bothWays.join(', ')}`);
 
 const placeholders = codeownersPlaceholders();
 if (placeholders.length) {
@@ -160,7 +161,7 @@ if (!commands) {
 // --- plan ---------------------------------------------------------------------------------
 const PROPOSE = Boolean(opts['propose-unresolved']);
 const { actions, decisions, suggestions, merge, proposals } = buildPlan({
-  target: TARGET, selection, profile, repoOwner, withDocs, commands, acknowledgedUnsupported, allowChoice, propose: PROPOSE, previous
+  target: TARGET, selection, profile, repoOwner, withDocs, commands, acknowledgedUnsupported, allowChoices, propose: PROPOSE, previous
 });
 const writes = actions.filter((a) => a.action !== 'same');
 const modifies = writes.some((a) => a.action === 'modify' || a.action === 'delete');
@@ -198,6 +199,18 @@ if (merge) {
   for (const r of merge.carried) console.log(`  carried  ${r.list.padEnd(5)} ${r.rule}  → .claude/project.json: ${r.reason}`);
   for (const r of merge.dropped) console.log(`  dropped  ${r.list.padEnd(5)} ${r.rule}  (${r.reason})`);
   for (const r of merge.replaced) console.log(`  replaced ${r}`);
+  if (merge.allowReport.length) {
+    console.log('\nExisting allow rules (.claude/settings.json):');
+    const label = { covered: 'covered', unsafe: 'unsafe — cannot be carried', carried: 'carried', dropped: 'dropped', 'needs-decision': 'needs decision' };
+    const width = Math.max(...merge.allowReport.map((r) => label[r.status].length));
+    for (const r of merge.allowReport) {
+      const why = r.status === 'covered' ? `  (by ${r.by})` : r.status === 'unsafe' ? `  (profile ${r.list === 'deny' ? 'denies' : 'asks'} ${r.by})` : r.hint ? `  — ${r.hint}` : '';
+      console.log(`  ${label[r.status].padEnd(width)}  ${r.rule}${why}`);
+    }
+  }
+}
+if (previous && (allowChoices.carry.length || allowChoices.drop.length || allowChoices.dropRest)) {
+  console.log('\nnote: --carry-allow, --drop-allow and --drop-allow-rest apply to the first adoption only; change allow rules in .claude/project.json → permissions.allow.');
 }
 if (!previous) {
   console.log('\nCommands found in package.json:');

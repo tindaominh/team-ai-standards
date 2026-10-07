@@ -49,6 +49,7 @@ Cả hai profile đều chặn (deny):
 Cả hai profile đều hỏi (ask) trước khi:
 
 - Cài hoặc cập nhật package, `npx`, `docker`, `curl`, `wget`, mọi lệnh `aws` hoặc `gh` khác, tạo hoặc chạy migration, web fetch và web search.
+- Lệnh khởi chạy tiến trình dài hoặc dùng credential thật: dev server (`npm/pnpm/yarn dev*`, `start*`, `serve*`, `watch*`, `next dev`, `nest start`, `vite`) và công cụ hạ tầng (`cdk`, `terraform`, `sam`, `serverless`/`sls`, `pulumi`, `copilot`, `eb`, và các script `cdk*` trong package). `cdk diff` và `cdk synth` đọc tài khoản cloud thật của developer. Các dạng deploy và destroy vẫn bị chặn.
 
 Cả hai profile cho phép không cần hỏi:
 
@@ -57,6 +58,7 @@ Cả hai profile cho phép không cần hỏi:
 
 Giới hạn của permission rule (theo tài liệu chính thức của Claude Code, trang "Configure permissions"):
 
+- Dấu `*` ở cuối, có dấu cách đứng trước, cũng khớp với lệnh không có đối số: "`Bash(ls *)` matches `ls`, and `Bash(git log *)` matches `git log`. That holds only when the trailing `*` is the rule's only wildcard." Vì vậy `Bash(pnpm test *)` cũng cho phép `pnpm test`, và ask `Bash(pnpm migration:run *)` cũng hỏi với `pnpm migration:run`.
 - Rule cho Bash so khớp với nội dung câu lệnh mà Claude viết ra. Tài liệu ghi rõ rule như vậy "covers the invocation Claude usually produces and isn't a security boundary around the program", tức là nó chỉ chặn cách gọi thông thường chứ không phải ranh giới bảo mật quanh chương trình. Cùng chương trình đó nếu được gọi bằng đường dẫn đầy đủ, bên trong `sh -c`, hoặc từ một script thì sẽ không bị khớp.
 - Deny rule cho `Read` và `Edit` cũng áp dụng cho các lệnh đọc/ghi file mà Claude Code nhận diện được trong Bash (`cat`, `head`, `tail`, `sed`, `tee`) và cho redirection. Chúng **không** áp dụng cho lệnh đọc file mà không nêu tên file (ví dụ `grep -r pattern .`) hoặc script tự mở file.
 - Deny rule trong `permissions.deny` áp dụng cho cả cuộc hội thoại chính lẫn các subagent.

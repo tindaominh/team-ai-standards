@@ -15,7 +15,7 @@ Một trang dành cho developer. Bạn không cần đọc các tài liệu khá
     - `--profile`: `strict` cho repository của khách hàng (mặc định), `standard` chỉ cho repository nội bộ. Không chắc? Dùng `strict`.
     - Mọi tuỳ chọn, giá trị mặc định và nơi được lưu: [README, Tuỳ chọn của adopt.mjs](../../README.md#tuỳ-chọn-của-adoptmjs). Các lựa chọn của bạn được lưu trong `.claude/project.json`; lần chạy sau dùng lại chúng trừ khi bạn truyền flag.
     - Script không ghi gì. Kết quả liệt kê mọi file sẽ tạo, diff của mọi file sẽ sửa, các permission rule được chuyển từ settings của bạn sang hoặc bị bỏ (kèm lý do), và một plan hash.
-    - Mục **Decisions required** liệt kê những gì chỉ con người quyết định được, kèm flag cần truyền: `--repo-owner @org/team` khi repo chưa có `CODEOWNERS`, `--carry-allow` hoặc `--drop-allow` cho các rule `allow` trong settings của bạn mà profile không cấp, flag stack khi detect không rõ ràng. Thêm flag rồi chạy lại `--dry-run`.
+    - Mục **Decisions required** liệt kê những gì chỉ con người quyết định được, kèm flag cần truyền: `--repo-owner @org/team` khi repo chưa có `CODEOWNERS`, `--carry-allow "<rule>"` hoặc `--drop-allow "<rule>"` (hoặc `--drop-allow-rest`) cho từng rule `allow` trong settings của bạn mà profile không cấp, flag stack khi detect không rõ ràng. Thêm flag rồi chạy lại `--dry-run`.
 2. **Áp dụng đúng plan đó** trên một branch mới với working tree sạch, cùng các flag, dùng `--yes` thay cho `--dry-run`:
 
     ```bash
