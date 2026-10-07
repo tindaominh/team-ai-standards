@@ -10,7 +10,7 @@ Bộ tiêu chuẩn dùng semantic versioning: `MAJOR.MINOR.PATCH`. Version nằm
 
 | Thay đổi | Mức | Ví dụ |
 | --- | --- | --- |
-| Developer hoặc repository phải làm khác đi, hoặc một thay đổi template có thể làm hỏng repository đã áp dụng | **MAJOR** | Thêm bước bắt buộc vào quy trình; chính sách dữ liệu chặt hơn; bỏ một quyền khỏi `allow`; đổi tên placeholder; thay đổi format của bảng lệnh được sinh ra trong `CLAUDE.md` (mọi repository phải sinh lại) |
+| Developer hoặc repository phải làm khác đi, hoặc một thay đổi template có thể làm hỏng repository đã áp dụng | **MAJOR** | Thêm bước bắt buộc vào quy trình; chính sách dữ liệu chặt hơn; bỏ một quyền khỏi `allow`; đổi tên placeholder; thay đổi marker của các khối `std:` trong `CLAUDE.md` hoặc điều kiện để chạy adoption |
 | Thêm mới hoặc chặt hơn nhưng không làm hỏng repository đã áp dụng | **MINOR** | Rule, skill, tài liệu hoặc workflow tuỳ chọn mới; deny rule mới; placeholder mới có giá trị mặc định an toàn |
 | Câu chữ, lỗi chính tả, ví dụ, làm rõ mà không đổi ý nghĩa | **PATCH** | Sửa link hỏng; câu chữ tiếng Việt tốt hơn |
 
@@ -27,7 +27,7 @@ Khi major version còn là `0`, các bản minor có thể chứa thay đổi ph
 ## 3. Phát hành
 
 1. Owner of the standard mở release PR: tăng version trong `package.json` và `templates/.claude/STANDARD_VERSION`, ghi ngày cho heading trong CHANGELOG.
-2. CI (`standard-ci`) pass: lint, JSON, settings, parity, budget, smoke test.
+2. CI (`standard-ci`) pass: lint, JSON, settings, parity, budget, bảng tuỳ chọn trong README, smoke test.
 3. Sau khi merge, owner tạo annotated tag trên `main`: `git tag -a v0.2.0 -m "Team AI standard 0.2.0"` rồi push tag đó.
 4. Owner tạo GitHub release từ tag, dùng phần CHANGELOG tương ứng làm release notes.
 5. Tag sẽ kích hoạt job cập nhật (mục tiếp theo).
@@ -40,15 +40,15 @@ Mỗi repository đã adopt có ba lớp. Mỗi file thuộc đúng một lớp,
 
 | Lớp | File | Owner | Thay đổi bằng cách |
 | --- | --- | --- | --- |
-| **1. Standard** | `.claude/rules/std/**`, `.claude/agents/std-*`, `.claude/skills/std-*/**`, `.claude/std/**` (base settings, compose script, hook, manifest), `.claude/settings.json` (được sinh ra), `.claude/STANDARD_VERSION`, `.github/pull_request_template.md`, khối `team-ai-standard` ở cuối `CODEOWNERS`, `.github/workflows/std-check.yml` | Owner of the standard | Chỉ qua pull request cập nhật; không bao giờ sửa trực tiếp trong repository |
-| **2. Project** | `CLAUDE.md`, `.claude/project.json` (stack, profile, lệnh, permission rule bổ sung, bật/tắt hook), `.claude/rules/local/**`, phần còn lại của `CODEOWNERS` | Team của repository | Pull request bình thường |
+| **1. Standard** | `.claude/rules/std/**`, `.claude/agents/std-*`, `.claude/skills/std-*/**`, `.claude/std/**` (base settings, compose script, hook, manifest), `.claude/settings.json` (được sinh ra), `.claude/STANDARD_VERSION`, `.github/pull_request_template.md` (hoặc khối `std:` của nó khi repository có template riêng), khối `team-ai-standard` ở cuối `CODEOWNERS`, các khối `std:` trong `CLAUDE.md`, `.github/workflows/std-check.yml` | Owner of the standard | Chỉ qua pull request cập nhật; không bao giờ sửa trực tiếp trong repository |
+| **2. Project** | `CLAUDE.md` ngoài các khối `std:`, `.claude/project.json` (stack, profile, owner của dự án `repoOwner`, các nhóm tuỳ chọn, lệnh, permission rule bổ sung, bật/tắt hook), `.claude/rules/local/**`, phần còn lại của `CODEOWNERS` | Team của repository | Pull request bình thường |
 | **3. Personal** | `.claude/settings.local.json` | Từng developer | Không bao giờ commit |
 
 Các lớp ghép với nhau như sau:
 
 - `.claude/settings.json` được `.claude/std/compose-settings.mjs` sinh ra từ base profile (`.claude/std/settings.<profile>.json`, Lớp 1) và `.claude/project.json` (Lớp 2). Các placeholder lệnh như `<unit-test-cmd>` được thay bằng lệnh của project; rule cho những lệnh mà project không có sẽ bị bỏ ra.
-- Bảng lệnh trong `CLAUDE.md` nằm giữa các marker `std-commands` và do cùng script đó sinh ra, nên `CLAUDE.md` và settings không bao giờ lệch nhau.
-- `.claude/std/manifest.json` ghi hash của mọi file Lớp 1. Workflow `std-check` chạy `compose-settings.mjs --check` trên mọi pull request và báo lỗi khi một file Lớp 1 bị sửa tay, hoặc khi `settings.json` hay bảng lệnh đã cũ.
+- `CLAUDE.md` có hai khối thuộc bộ tiêu chuẩn, do cùng script đó sinh ra từ `.claude/project.json`: `standard` (stack, profile, những file không được sửa) và `commands` (các placeholder lệnh). Mỗi khối nằm giữa `<!-- std:begin <name> -->` và `<!-- std:end <name> -->`. Script chỉ sửa phần bên trong khối; mọi thứ bên ngoài thuộc về repository.
+- `.claude/std/manifest.json` ghi hash của mọi file Lớp 1. Workflow `std-check` chạy `compose-settings.mjs --check` trên mọi pull request và báo lỗi khi một file Lớp 1 bị sửa tay, hoặc khi `settings.json` hay một khối `std:` đã cũ.
 - Các câu riêng cho từng stack là các fragment ghép được: mỗi fragment cho một framework, một database, một thư viện data access hoặc một mảng tuỳ chọn (AWS). Rule của chúng nằm trong `.claude/rules/std/fragments/<dimension>-<value>.md` (tối đa 150 từ mỗi file), còn ví dụ nằm trong các file cùng tên cạnh hai skill `std-tdd-workflow` và `std-db-migration-review`. Lựa chọn được ghi trong `.claude/project.json` → `stack`, ví dụ `{ "runtime": "node", "framework": "nestjs", "databases": ["mysql"], "dataAccess": "typeorm", "optional": ["aws"] }`. Cách thêm một fragment: tài liệu 11.
 - `.claude/STANDARD_VERSION` chứa version mà repository đang dùng; `CLAUDE.md` tham chiếu tới file này thay vì ghi lại con số.
 
@@ -84,15 +84,16 @@ Khi một release tag được push, với mỗi repository đích đang bật, 
 
 1. Kiểm tra tag, `package.json` và `STANDARD_VERSION` khớp nhau.
 2. Checkout repository đích.
-3. Chạy `sync-standard.mjs`, script này **chỉ ghi Lớp 1**:
+3. Chạy `sync-standard.mjs`, script này **chỉ ghi Lớp 1** (kể cả phần bên trong các khối `std:`):
    - ghi lại các file standard và đúng những fragment được chọn trong `.claude/project.json` của repository; xoá các fragment không còn được chọn và các file standard đã bị bỏ ở upstream (chỉ những file có trong manifest);
    - chỉ cập nhật các nhóm tuỳ chọn (ví dụ các kiểm tra tài liệu) nếu repository đã cài chúng;
-   - chỉ cập nhật PR template và khối `CODEOWNERS` ở nơi có marker quản lý;
+   - chỉ cập nhật PR template (cả file, hoặc chỉ khối `std:` của nó) và khối `CODEOWNERS` ở nơi có marker quản lý hoặc khối đó;
+   - thay phần bên trong các khối `std:` của `CLAUDE.md`; phần bên ngoài giữ nguyên từng byte, và khối nào bị repository xoá thì được báo lại, không tự thêm lại;
    - sinh lại `.claude/settings.json` từ base profile mới và `.claude/project.json` (không đổi) của repository;
    - ghi `.claude/STANDARD_VERSION` và manifest;
-   - không bao giờ thay đổi `CLAUDE.md`, `.claude/project.json`, `.claude/rules/local/` hay `.claude/settings.local.json`.
+   - không bao giờ thay đổi `CLAUDE.md` ngoài các khối `std:`, `.claude/project.json`, `.claude/rules/local/` hay `.claude/settings.local.json`.
 4. Commit vào một branch mới `chore/ai-standard-v<version>` và mở **một pull request** trong repository đó. Job không bao giờ push vào base branch.
-5. Mô tả PR liệt kê các file được cập nhật và bị xoá, mọi permission rule được thêm hoặc bỏ, và những việc cần làm tay. Nếu bản phát hành thay đổi format của bảng lệnh được sinh ra (thay đổi MAJOR, mục 1), mô tả PR có phần "Action required" với đúng lệnh cần chạy trên branch của PR, `node .claude/std/compose-settings.mjs`, kèm lý do: `CLAUDE.md` thuộc về repository nên bản cập nhật không sửa nó, và `std-check` sẽ báo lỗi cho tới khi bảng khớp.
+5. Mô tả PR liệt kê các file được cập nhật và bị xoá, mọi permission rule được thêm hoặc bỏ, và những việc cần làm tay.
 
 Sau đó:
 
@@ -130,19 +131,40 @@ Chọn stack:
 | Data access | `--data-access` | `typeorm`, `raw`, `none` | `typeorm`/`@nestjs/typeorm`; có driver mà không có ORM nghĩa là `raw`; không có database nghĩa là `none` |
 | Tuỳ chọn | `--with` / `--without-optional` | `aws` | `@aws-sdk/*`, `aws-sdk`, `aws-cdk-lib`, hoặc thư mục `infra/`, `cdk/` hay `terraform/` |
 
-- Kết quả detect không bao giờ được áp dụng âm thầm. `--dry-run` hiển thị lựa chọn và nguồn gốc của từng giá trị. Một lần chạy thật cần `--yes` để chấp nhận các giá trị đã detect, hoặc flag cho mọi chiều được detect.
+- Kết quả detect không bao giờ được áp dụng âm thầm. `--dry-run` hiển thị lựa chọn và nguồn gốc của từng giá trị; `--yes` chỉ áp dụng plan đã được xem bằng `--dry-run`.
 - Khi detect không rõ ràng (ví dụ có ORM mà không có driver database), hoặc repo phụ thuộc vào thứ mà bộ tiêu chuẩn chưa có fragment (danh sách `unsupported` trong registry: Fastify, Koa, hapi, Prisma, Drizzle, Kysely, Knex, Sequelize, Mongoose, MongoDB), script dừng lại và không ghi gì. Với dependency chưa có fragment, thông báo nêu tên dependency, nói rõ chưa có fragment, và chỉ tới tài liệu 11 (thêm fragment) hoặc flag rõ ràng. Framework `none` cài fragment cho service Node.js không có web framework; data access `none` không cài gì.
 - Flag rõ ràng (hoặc alias) sẽ vượt qua dependency chưa có fragment cho chiều đó. Dependency được ghi vào `.claude/project.json` dưới dạng `"acknowledgedUnsupported": ["@prisma/client"]`, để reviewer thấy repo đang dùng thứ chưa có fragment. `std-check` và PR cập nhật cảnh báo các dependency chưa có fragment mà chưa được ghi nhận (ví dụ thêm sau này), và không cảnh báo lại các dependency đã ghi nhận.
 - Các tổ hợp không hợp lệ bị từ chối: thư viện data access mà không có database, có database mà data access là `none`, hoặc giá trị không xác định. Tổ hợp bất thường (hai database, NestJS với raw driver) chỉ đưa ra cảnh báo.
 - Các alias từ version trước vẫn dùng được và đặt mọi chiều: `--stack nestjs-mysql` (NestJS + MySQL + TypeORM + AWS), `--stack nestjs-postgres` (NestJS + PostgreSQL + TypeORM + AWS), `--stack node-postgres` (không framework + PostgreSQL + TypeORM + AWS).
 - Các giá trị và quy tắc detect nằm trong `templates/fragments/fragments.json`. File này chỉ liệt kê các fragment team đang dùng; fragment mới được thêm theo tài liệu 11.
 
-Script ghi những gì:
+Xem trước, rồi áp dụng:
 
-- Script tạo các file Lớp 1, `.claude/project.json` với lựa chọn stack và các lệnh điền sẵn từ script trong `package.json` khi tên khớp, một bộ khung `CLAUDE.md` có các mục `TODO(adopt)`, `.claude/STANDARD_VERSION`, và manifest.
-- Script không bao giờ ghi đè file đã có. Với `CLAUDE.md`, `.claude/settings.json`, PR template hoặc `CODEOWNERS` đã tồn tại, script ghi `<file>.proposed` cùng một merge checklist trong `.claude/std-adoption-checklist.md`. Workflow `std-check` báo lỗi nếu một file `*.proposed`, checklist hoặc `.claude/settings.local.json` bị commit.
+- `--dry-run` không ghi gì vào repository. Script in ra mọi file sẽ tạo, unified diff của mọi file sẽ sửa, file `.claude/project.json` sẽ ghi, các permission rule được chuyển sang hoặc bị bỏ kèm lý do, các gợi ý dọn dẹp, các quyết định cần đưa ra, và một **plan hash** tính từ version bộ tiêu chuẩn, các flag, các file đang có và kết quả. Hash được lưu bên ngoài repository (một thư mục tạm riêng cho từng user).
+- `--yes` tính lại plan. Nếu hash khác với plan đã xem (một file bị sửa giữa chừng, flag khác, version bộ tiêu chuẩn mới), script dừng và yêu cầu chạy lại `--dry-run`. `--plan <hash>` yêu cầu đúng một plan cụ thể thay cho plan đã lưu.
+- Trước khi sửa bất kỳ file nào đã có, `--yes` yêu cầu một git repository có working tree sạch, đang ở branch khác default branch; nếu không, script dừng và in đúng các lệnh git cần chạy. Việc tạo file mới không có điều kiện này.
+- Chạy lại `--yes`, hoặc `--dry-run` sau đó, sẽ báo "Nothing to do".
+- Các lựa chọn cấu hình (stack, profile, `--repo-owner`, `--with-docs`) được lưu trong `.claude/project.json`. Ở lần chạy sau, mỗi giá trị lấy từ flag, rồi `project.json`, rồi kết quả detect, rồi giá trị mặc định, và `--dry-run` in ra nguồn của từng giá trị. Lần chạy sau có flag chỉ đổi đúng giá trị đó: `project.json` giữ các key khác, settings và các khối `std:` được sinh lại, các file standard mà lựa chọn mới không cần nữa bị xoá. Repo phải đang dùng cùng version của bộ tiêu chuẩn (cập nhật trước). PR cập nhật đọc cùng các giá trị này, kể cả `repoOwner` cho khối `CODEOWNERS`. Mọi tuỳ chọn: README, mục "Tuỳ chọn của adopt.mjs" (sinh từ `scripts/lib/adopt-options.mjs`; `adopt.mjs --help` in ra cùng danh sách).
+
+Những gì được làm tự động:
+
+- File mới: các file Lớp 1, `.claude/project.json` (lựa chọn stack, các lệnh điền sẵn từ script trong `package.json` khi tên khớp, permission rule bổ sung), bộ khung `CLAUDE.md` có các mục `TODO(adopt)` khi repo chưa có file này, `.claude/STANDARD_VERSION` và manifest. `CODEOWNERS` mới lấy owner của project từ `--repo-owner`.
+- `CLAUDE.md` đã có được thêm hai khối `std:` sau H1 đầu tiên và phần giới thiệu (trước heading kế tiếp; ở đầu file khi không có H1). Mọi dòng đang có được giữ nguyên. Những heading có thể trùng với một khối (như "Commands") được báo là gợi ý dọn dẹp, không bao giờ bị xoá.
+- `.claude/settings.json` đã có được sinh lại từ profile. Các rule `deny` và `ask` mà profile chưa có được chuyển vào `.claude/project.json` → `permissions`. Rule `allow` hoặc `ask` bị một `deny` của profile bao trùm, và rule `allow` bị một `ask` của profile bao trùm, sẽ bị bỏ và được báo lại (vốn không có tác dụng). Các giá trị do profile quản lý, như `cleanupPeriodDays`, lấy theo profile và được liệt kê.
+- PR template hoặc `CODEOWNERS` đã có được thêm khối của bộ tiêu chuẩn ở cuối; phần còn lại giữ nguyên.
+
+Những gì dừng lại chờ quyết định (liệt kê trong "Decisions required" kèm flag; `--yes` từ chối cho tới khi giải quyết xong):
+
+- Không có `CODEOWNERS` và không có `--repo-owner`.
+- Rule `allow` trong settings đang có mà profile không cấp: `--carry-allow` giữ chúng trong `.claude/project.json`, `--drop-allow` bỏ chúng. Permission không bao giờ bị nới lỏng tự động.
+- Detect stack không rõ ràng hoặc dependency chưa có fragment (xem ở trên).
+- File settings không parse được hoặc có key mà bộ tiêu chuẩn không gộp (`env`, `hooks`, `model`, `permissions.defaultMode` và các key khác), hoặc đường dẫn của một file standard đã tồn tại với nội dung khác. Sửa file đó, hoặc truyền `--propose-unresolved`: chỉ khi đó adoption mới ghi `<file>.proposed` và `.claude/std-adoption-checklist.md` cho các file này. Workflow `std-check` báo lỗi nếu một file `*.proposed`, checklist hoặc `.claude/settings.local.json` bị commit.
+
+Ngoài ra:
+
 - Script từ chối chạy khi khối `CODEOWNERS` của chính bộ tiêu chuẩn vẫn còn owner placeholder.
 - Script không bao giờ commit, push, cài package hay dùng mạng.
+- Để hoàn tác trước khi commit: `git restore .` và `git clean -fd` (kiểm tra trước bằng `git clean -nd`).
 - Sau đó owner of the standard thêm repository vào `standard-targets.json`.
 
 ## 7. Bỏ qua hoặc hoãn một bản cập nhật

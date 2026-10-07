@@ -212,11 +212,31 @@ export function optionalFiles(group) {
 
 export const prTemplate = () => readFileSync(join(T, '.github/pull_request_template.md'), 'utf8');
 
+// The PR template as a std block, appended to a repository's existing template.
+export const PR_BLOCK = 'pr-template';
+export const PR_KEY = `.github/pull_request_template.md#std:${PR_BLOCK}`;
+export function prBlock() {
+  const inner = `\n${prTemplate()}`;
+  return { inner, text: `<!-- std:begin ${PR_BLOCK} -->${inner}<!-- std:end ${PR_BLOCK} -->` };
+}
+export const PR_BLOCK_RE = new RegExp(`<!-- std:begin ${PR_BLOCK} -->[\\s\\S]*?<!-- std:end ${PR_BLOCK} -->`);
+
 export function codeownersTemplate() {
   const text = readFileSync(join(T, '.github/CODEOWNERS'), 'utf8');
   const start = text.indexOf(BLOCK_BEGIN);
   const end = text.indexOf(BLOCK_END) + BLOCK_END.length;
   return { full: text, block: text.slice(start, end) };
+}
+
+// The standard block for one repository: the project files' owner (repoOwner in
+// .claude/project.json) goes first, so the standard's own lines still win.
+export function codeownersBlock(repoOwner) {
+  const { block } = codeownersTemplate();
+  if (!repoOwner) return block;
+  const lines = block.split('\n');
+  const at = lines.findIndex((l) => l !== '' && !l.startsWith('#'));
+  const own = ['/CLAUDE.md', '/.claude/project.json', '/.claude/rules/local/'].map((p) => `${p.padEnd(26)}${repoOwner}`);
+  return [...lines.slice(0, at), '# Project files: owner from .claude/project.json "repoOwner".', ...own, ...lines.slice(at)].join('\n');
 }
 
 // The standard's CODEOWNERS block must name a real team before any repository adopts.
@@ -230,10 +250,8 @@ export function findBlock(text) {
   return a > -1 && b > a ? { start: a, end: b + BLOCK_END.length } : null;
 }
 
-export const claudeSkeleton = (selection, profile) => {
-  const sel = normalize(selection);
-  return fill(readFileSync(join(T, 'CLAUDE.md'), 'utf8'), { STACK: summary(sel), STACK_DESCRIPTION: describe(sel), PROFILE: profile });
-};
+// CLAUDE.md for a repository without one; its std blocks are filled by compose.mjs.
+export const claudeSkeleton = () => readFileSync(join(T, 'CLAUDE.md'), 'utf8');
 
 // Command names that adoption pre-fills from package.json scripts.
 export const COMMAND_CANDIDATES = {

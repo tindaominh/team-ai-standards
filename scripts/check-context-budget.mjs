@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Counts the words Claude Code loads from the standard.
-//   Always loaded: templates/CLAUDE.md, rules without a `paths:` key, and the
+//   Always loaded: templates/CLAUDE.md with its std blocks rendered (every command
+//                  set, the longest stack line), rules without a `paths:` key, and the
 //                  `description` of every skill and agent.
 //   Worst case:    always loaded + shared path-scoped rules + the fragment rules
 //                  of a stack selection, as when all matching files are touched
@@ -11,6 +12,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { DIMENSIONS, F, ROOT, T, registry, selectedFragments, summary, validate, walk } from './lib/standard.mjs';
+import { COMMANDS, applyBlocks, renderBlocks } from '../templates/.claude/std/compose.mjs';
 
 const LIMIT = 2300;
 const WORST_LIMIT = 2300;
@@ -25,7 +27,13 @@ const description = (fm) => {
   return m ? m[1] : '';
 };
 
-const always = [{ file: 'templates/CLAUDE.md', words: words(readFileSync(join(T, 'CLAUDE.md'), 'utf8')) }];
+const sampleProject = {
+  profile: 'standard',
+  stack: { framework: 'express', databases: ['mysql', 'postgres'], dataAccess: 'typeorm', optional: ['aws'] },
+  commands: Object.fromEntries(COMMANDS.map(([key]) => [key, `npm run ${key}:example`]))
+};
+const claudeMd = applyBlocks(readFileSync(join(T, 'CLAUDE.md'), 'utf8'), renderBlocks(sampleProject));
+const always = [{ file: 'templates/CLAUDE.md (std blocks rendered)', words: words(claudeMd) }];
 const sharedScoped = [];
 for (const file of walk(join(T, '.claude/rules/std')).filter((f) => f.endsWith('.md')).sort()) {
   const { fm, body } = split(readFileSync(file, 'utf8'));

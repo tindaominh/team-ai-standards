@@ -3,22 +3,23 @@
 //
 // Builds .claude/settings.json from the team standard's base profile
 // (.claude/std/settings.<profile>.json) and this repository's choices in
-// .claude/project.json, and regenerates the command table in CLAUDE.md
-// (between the "std-commands" markers).
+// .claude/project.json, and regenerates the std blocks in CLAUDE.md (between
+// <!-- std:begin <name> --> and <!-- std:end <name> -->; text outside them is never changed).
 //
-//   node .claude/std/compose-settings.mjs           write settings.json and the CLAUDE.md table
+//   node .claude/std/compose-settings.mjs           write settings.json and the CLAUDE.md std blocks
 //   node .claude/std/compose-settings.mjs --check   fail if they are stale, or if a
 //                                                   standard file listed in
 //                                                   .claude/std/manifest.json was edited, or if
 //                                                   *.proposed files, the adoption checklist or
 //                                                   .claude/settings.local.json are tracked by git
 // Options (used by the adoption and update scripts): --root <dir> --settings-out <path>
-//   --claude-md <path>, --skip-claude-md (the update job never touches CLAUDE.md)
+//   --claude-md <path>
 // No dependencies, no network. Reads and writes only inside the repository.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { BLOCK_NAMES, COMMANDS, applyBlocks, composeSettings, hasBlock, renderBlocks } from './compose.mjs';
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => {
@@ -29,24 +30,9 @@ const CHECK = args.includes('--check');
 const ROOT = opt('root', process.cwd());
 const SETTINGS_OUT = opt('settings-out', '.claude/settings.json');
 const CLAUDE_MD = opt('claude-md', 'CLAUDE.md');
-const SKIP_CLAUDE_MD = args.includes('--skip-claude-md');
 const PROJECT = '.claude/project.json';
 const MANIFEST = '.claude/std/manifest.json';
 const BLOCK = { begin: '# BEGIN team-ai-standard', end: '# END team-ai-standard' };
-
-// Order and labels of the command table.
-const COMMANDS = [
-  ['install', 'Install dependencies (ask first)'],
-  ['build', 'Build'],
-  ['lint', 'Lint'],
-  ['typecheck', 'Typecheck'],
-  ['unit-test', 'Unit tests (one file: append the path)'],
-  ['integration-test', 'Integration tests, local database container'],
-  ['migration-show', 'List migrations and their status'],
-  ['migration-generate', 'Generate a migration (append the name)'],
-  ['migration-run', 'Run migrations on the local database'],
-  ['migration-revert', 'Revert the last migration locally']
-];
 
 const read = (p) => readFileSync(resolve(ROOT, p), 'utf8');
 const here = (p) => existsSync(resolve(ROOT, p));
@@ -76,56 +62,18 @@ for (const [key, value] of Object.entries(commands)) {
   }
 }
 
-// --- settings.json ---------------------------------------------------------
-function expand(rules) {
-  const out = [];
-  for (const rule of rules) {
-    let missing = false;
-    const next = rule.replace(/<([a-z-]+)-cmd>/g, (_, key) => {
-      const value = commands[key];
-      if (!value) missing = true;
-      return value || '';
-    });
-    if (!missing) out.push(next);
-  }
-  return out;
-}
-const unique = (list) => [...new Set(list)];
-
-const extra = project.permissions || {};
-const settings = JSON.parse(JSON.stringify(base));
-for (const key of ['allow', 'ask', 'deny']) {
-  settings.permissions[key] = unique([...expand(base.permissions[key] || []), ...(extra[key] || [])]);
-}
-for (const rule of extra.allow || []) {
-  if (settings.permissions.deny.includes(rule)) warnings.push(`project allow rule is also denied by the standard and has no effect: ${rule}`);
-}
-if (project.hooks === true) {
-  const hook = (file) => ({ type: 'command', command: `node "$CLAUDE_PROJECT_DIR"/.claude/std/hooks/${file}` });
-  settings.hooks = {
-    PostToolUse: [{ matcher: 'Edit|Write|MultiEdit', hooks: [{ ...hook('format-check-on-edit.cjs'), timeout: 30 }] }],
-    Stop: [{ hooks: [{ ...hook('typecheck-on-stop.cjs'), timeout: 120 }] }]
-  };
-}
-const settingsText = `${JSON.stringify(settings, null, 2)}\n`;
-
-// --- CLAUDE.md command table ----------------------------------------------
-const MARK_BEGIN = '<!-- BEGIN GENERATED: std-commands -->';
-const MARK_END = '<!-- END GENERATED: std-commands -->';
-const tableRows = COMMANDS.map(([key, label]) => {
-  const value = commands[key];
-  const cmd = value ? `\`${value}\`` : `TODO: set "${key}" in \`.claude/project.json\``;
-  return `| \`<${key}-cmd>\` | ${label} | ${cmd} |`;
-});
-const table = [MARK_BEGIN, '', '| Placeholder | Purpose | Command |', '| --- | --- | --- |', ...tableRows, '', MARK_END].join('\n');
-const blockRe = /<!-- BEGIN GENERATED: std-commands -->[\s\S]*?<!-- END GENERATED: std-commands -->/;
+// --- settings.json and CLAUDE.md std blocks ---------------------------------------
+const composed = composeSettings(base, project);
+const settingsText = composed.text;
+warnings.push(...composed.warnings);
 
 let claudeText = null;
 let claudeNext = null;
-if (!SKIP_CLAUDE_MD && here(CLAUDE_MD)) {
+if (here(CLAUDE_MD)) {
   claudeText = read(CLAUDE_MD);
-  if (blockRe.test(claudeText)) claudeNext = claudeText.replace(blockRe, table);
-  else warnings.push(`${CLAUDE_MD} has no std-commands markers; the command table is not generated.`);
+  const missingBlocks = BLOCK_NAMES.filter((name) => !hasBlock(claudeText, name));
+  if (missingBlocks.length) warnings.push(`${CLAUDE_MD} has no std block(s) ${missingBlocks.join(', ')}; they are not generated. Re-run the adoption script's --dry-run to see where they go.`);
+  claudeNext = applyBlocks(claudeText, renderBlocks(project));
   if (/TODO\(adopt\)/.test(claudeText)) warnings.push(`${CLAUDE_MD} still contains TODO(adopt) sections.`);
 }
 for (const [key] of COMMANDS) if (!commands[key]) warnings.push(`commands.${key} is not set; its permission rules are left out.`);
@@ -147,6 +95,12 @@ if (here(UNSUPPORTED) && here('package.json')) {
 
 // --- manifest of standard files --------------------------------------------
 function currentHash(entry) {
+  const std = /^(.*)#std:([a-z-]+)$/.exec(entry);
+  if (std) {
+    if (!existsSync(join(ROOT, std[1]))) return null;
+    const m = new RegExp(`<!-- std:begin ${std[2]} -->([\\s\\S]*?)<!-- std:end ${std[2]} -->`).exec(read(std[1]));
+    return m ? hash(m[1]) : null;
+  }
   if (entry.endsWith('#team-ai-standard')) {
     const file = entry.split('#')[0];
     if (!existsSync(join(ROOT, file))) return null;
@@ -172,7 +126,7 @@ if (manifest && manifest.stack && JSON.stringify(canonical(manifest.stack)) !== 
 if (CHECK) {
   const current = here(SETTINGS_OUT) ? read(SETTINGS_OUT) : '';
   if (current !== settingsText) problems.push(`${SETTINGS_OUT} does not match .claude/project.json and the standard base. Run: node .claude/std/compose-settings.mjs`);
-  if (claudeNext !== null && claudeNext !== claudeText) problems.push(`${CLAUDE_MD} command table is stale. Run: node .claude/std/compose-settings.mjs`);
+  if (claudeNext !== null && claudeNext !== claudeText) problems.push(`${CLAUDE_MD} std blocks are stale. Run: node .claude/std/compose-settings.mjs`);
   if (!manifest) problems.push(`${MANIFEST} not found.`);
   else {
     for (const [entry, expected] of Object.entries(manifest.files || {})) {
@@ -208,7 +162,7 @@ if (CHECK) {
   }
   if (claudeNext !== null && claudeNext !== claudeText) {
     writeFileSync(resolve(ROOT, CLAUDE_MD), claudeNext);
-    console.log(`updated command table in ${CLAUDE_MD}`);
+    console.log(`updated std blocks in ${CLAUDE_MD}`);
   }
   if (manifest && SETTINGS_OUT === '.claude/settings.json' && manifest.files && SETTINGS_OUT in manifest.files) {
     manifest.files[SETTINGS_OUT] = hash(settingsText);

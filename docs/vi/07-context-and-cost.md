@@ -30,7 +30,7 @@ Hiện tại `common/marketplace-integration.md` luôn được load, vì phần
 | Mô tả của agent hoặc skill | 40 từ |
 | Số skill mỗi repository | 6 skill của team + tối đa 2 skill riêng của repository |
 
-Trong repository của bộ tiêu chuẩn, `npm run check:budget` đo bộ template và báo lỗi khi vượt một trong hai giới hạn; CI chạy lệnh này ở mọi thay đổi. Lệnh kiểm tra mọi tổ hợp hợp lệ của các stack fragment và giới hạn 150 từ của từng fragment. Bộ template 0.4.0 đo được khoảng 1.700 từ luôn được load; tổ hợp lớn nhất (Express + MySQL + PostgreSQL + TypeORM + AWS) khoảng 2.200 từ. Rule local trong `.claude/rules/local/` cộng thêm vào phần luôn được load; hãy giữ chúng ngắn. Rule chỉ chứa những câu ngắn, kiểm tra được; ví dụ code đặt trong skill, vì skill chỉ được load khi dùng tới. Trong repository dự án, đo bằng `wc -w CLAUDE.md .claude/rules/*/*.md` rồi nhân khoảng 1,3 để ra số token.
+Trong repository của bộ tiêu chuẩn, `npm run check:budget` đo bộ template và báo lỗi khi vượt một trong hai giới hạn; CI chạy lệnh này ở mọi thay đổi. Lệnh kiểm tra mọi tổ hợp hợp lệ của các stack fragment và giới hạn 150 từ của từng fragment. Bộ template 0.5.0 đo được khoảng 1.780 từ luôn được load, tính cả các khối trong `CLAUDE.md` khi mọi lệnh đã được đặt; tổ hợp lớn nhất (Express + MySQL + PostgreSQL + TypeORM + AWS) khoảng 2.290 từ, sát giới hạn. Rule local trong `.claude/rules/local/` cộng thêm vào phần luôn được load; hãy giữ chúng ngắn. Rule chỉ chứa những câu ngắn, kiểm tra được; ví dụ code đặt trong skill, vì skill chỉ được load khi dùng tới. Trong repository dự án, đo bằng `wc -w CLAUDE.md .claude/rules/*/*.md` rồi nhân khoảng 1,3 để ra số token.
 
 ## Viết chỉ dẫn cho tốt
 
