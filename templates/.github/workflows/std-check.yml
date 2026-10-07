@@ -1,0 +1,31 @@
+# team-ai-standard: managed file.
+# Checks on every pull request that the team AI standard files (Layer 1) are
+# intact and that .claude/settings.json and the CLAUDE.md command table match
+# .claude/project.json. See the team standard, 10-versioning-and-distribution.
+name: std-check
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: std-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  std-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Team AI standard files and generated settings are consistent
+        run: node .claude/std/compose-settings.mjs --check

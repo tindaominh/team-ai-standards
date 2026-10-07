@@ -4,6 +4,32 @@ All notable changes to this standard are recorded here. Versions follow `MAJOR.M
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-07
+
+Adoption kit: one command plus about 30 minutes of project details. **Breaking** for any repository set up by hand from 0.2.0 templates: re-adopt with `scripts/adopt.mjs` (no repository uses the standard yet; the pilot has not started).
+
+### Added
+
+- `scripts/adopt.mjs`: run from a project repository with `--profile`, the stack selection flags, optional `--with-docs`, `--dry-run` and `--yes`. Detects the stack from `package.json`, shows the detected selection with its source, and never applies it silently: a real run needs `--yes` or explicit flags; ambiguous detection, or a dependency without a fragment, stops with the options. Creates the standard files, `.claude/project.json` (selection, commands pre-filled from `package.json` scripts), a `CLAUDE.md` skeleton with `TODO(adopt)` sections, `.claude/STANDARD_VERSION` and a manifest. Never overwrites existing files: writes `*.proposed` files and `.claude/std-adoption-checklist.md`. Refuses to run while the standard's CODEOWNERS block has placeholder owners. No network, no git writes.
+- Three layers in project repositories (doc 10, README): Standard (synced, never edited in the repository), Project (`CLAUDE.md`, `.claude/project.json`, `.claude/rules/local/`), Personal (`.claude/settings.local.json`). Doc 10 lists what may be set in personal settings and quotes the official documentation on why project deny rules still apply.
+- `.claude/std/compose-settings.mjs` (in every repository): generates `.claude/settings.json` from the base profile and `.claude/project.json`, and the `CLAUDE.md` command table; `--check` fails when generated files are stale or a standard file was edited (hashes in `.claude/std/manifest.json`). Rejects command values that chain commands.
+- `.github/workflows/std-check.yml` (in every repository): runs that check on every pull request. It also fails when a `*.proposed` file, the adoption checklist or `.claude/settings.local.json` is tracked by git, and warns when the stack selection in `project.json` differs from the installed fragments. The comparison ignores key order and array order.
+- Composable stack fragments (`templates/fragments/`, registry `fragments.json`) for what the team uses: framework `nestjs | express | none` (`none` has its own fragment for a Node.js service without a web framework, used by the pilot repository), databases `mysql | postgres` (one or more), data access `typeorm | raw | none` (`none` = no database, no fragment), optional `aws`. Each fragment has a rule of at most 150 words in `.claude/rules/std/fragments/<dimension>-<value>.md` and optional examples next to the `std-tdd-workflow` and `std-db-migration-review` skills. Combinations are validated (for example a data-access library needs a database); unusual ones warn. Selection flags `--framework`, `--db`, `--data-access`, `--with`, `--without-optional`; the aliases `--stack nestjs-mysql`, `nestjs-postgres`, `node-postgres` (= framework none + PostgreSQL + TypeORM, each with AWS) expand to selections. New fragments are added through doc 11.
+- Dependencies without a fragment (the registry's `unsupported` list: Fastify, Koa, hapi, Prisma, Drizzle, Kysely, Knex, Sequelize, Mongoose, MongoDB) stop adoption with a message that names the dependency, says no fragment exists, and points to doc 11 or the explicit flag. An explicit flag overrides it and records the dependency in `.claude/project.json` as `acknowledgedUnsupported`; `std-check` and update PRs warn only about unsupported dependencies that are not acknowledged. The list ships to repositories as `.claude/std/unsupported.json`.
+- PostgreSQL client commands (`psql`, `pg_dump`, `pg_dumpall`, `pg_restore`) denied in both profiles.
+- Docs `00-quickstart` (linked first in the README) and `11-adding-a-stack-fragment`, in English and Vietnamese, and the fragment template `templates/fragments/_TEMPLATE.md`.
+- Smoke tests (117 checks): placeholder refusal, dry run and confirmation, detection for each supported dependency set, ambiguous detection, unsupported dependencies (stop, acknowledged override, warning only for newly added ones in std-check and sync), alias expansion, invalid and removed values, existing files, compose and std-check (edits, committed proposals and personal settings, reordered keys and arrays), and sync adding and removing fragments while leaving Layer 2 and 3 files unchanged byte for byte.
+
+### Changed
+
+- **Breaking:** standard files use reserved names: `.claude/rules/std/**`, agents `std-planner`, `std-code-reviewer`, `std-security-reviewer`, skills `std-plan`, `std-tdd-workflow`, `std-verification`, `std-code-review`, `std-security-review`, `std-db-migration-review` (invoked as `/std-…`).
+- **Breaking:** the command table moves from hand-edited `CLAUDE.md` to `.claude/project.json`; `CLAUDE.md` shows a generated copy. Templates mirror the project layout; base settings are `templates/.claude/std/settings.strict.json` and `settings.standard.json`; hooks live in `.claude/std/hooks/` and are enabled with `"hooks": true`.
+- **Breaking:** `scripts/sync-standard.mjs` writes only standard files: it reads the stack selection and profile from the repository's `.claude/project.json`, installs exactly the selected fragments and removes deselected ones, regenerates `settings.json`, deletes standard files removed upstream, updates the PR template and the CODEOWNERS block only where the managed marker is present, and never touches `CLAUDE.md`, `project.json`, local rules or personal settings. When a release changes the generated command table, the update PR has an "Action required" section with the exact command and the reason. `standard-targets.json` no longer has a `profile` field.
+- Shared rules and agents no longer contain framework, database or data-access specifics; the TypeORM rule and the AWS rule became fragments; the reviewers read the selected fragment rules.
+- Doc 10: a change to the generated command-table format is a MAJOR change.
+- `check-context-budget.mjs` checks every valid fragment combination (42) and the 150-word limit per fragment rule: always loaded about 1,640 words; the largest combination, Express + MySQL + PostgreSQL + TypeORM + AWS, is about 2,150 words; limits 2,300.
+- CODEOWNERS template split into a project part and a managed block that must stay last.
+
 ## [0.2.0] - 2026-10-07
 
 ### Added

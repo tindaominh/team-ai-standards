@@ -13,7 +13,7 @@ Khoảng mười developer dùng chung các repository. Tài liệu bị lỗi t
 
 ## 1. Hook Claude Code ở local: chỉ nhắc nhở
 
-- Hook của team chỉ được kiểm tra hoặc nhắc nhở (xem 05 và `templates/hooks/README.md`).
+- Hook của team chỉ được kiểm tra hoặc nhắc nhở (xem 05 và `.claude/std/hooks/README.md`).
 - Hook có thể báo cho Claude hoặc developer "env schema đã thay đổi; hãy cập nhật docs/configuration.md". Hook không bao giờ tự sửa tài liệu, không commit và không push.
 - Lý do: hook local mà ghi vào file dùng chung sẽ tạo ra thay đổi chưa được review, gây conflict giữa các developer và làm diff có những thay đổi bất ngờ.
 
@@ -145,9 +145,11 @@ Workflow: `templates/.github/workflows/docs-notify.yml`.
 
 ## 8. Checklist thiết lập cho một repository
 
-- [ ] Copy `scripts/generate-docs.mjs`, `scripts/check-docs-updated.mjs` và `scripts/export-env-schema.ts` từ templates; thêm npm script `docs:env-schema`.
+`node <path-to-standard>/scripts/adopt.mjs --with-docs` cài các script cùng hai workflow `docs-check` và `docs-notify`, và giữ chúng luôn được cập nhật theo bộ tiêu chuẩn. Checklist dưới đây lo phần còn lại.
+
+- [ ] Chạy script adoption với `--with-docs` (hoặc, với repository đã adopt, nhờ owner of the standard); thêm npm script `docs:env-schema`.
 - [ ] Thêm marker ở những chỗ cần bảng sinh tự động; chạy generator; commit.
-- [ ] Copy `docs-check.yml` và tạo label `docs-not-needed`.
-- [ ] Copy `CODEOWNERS`, điền owner thật, bật code-owner review.
-- [ ] Tuỳ chọn: copy `docs-notify.yml` và đặt `SLACK_WEBHOOK_URL` (hoặc `CHAT_PROVIDER=teams` và `TEAMS_WEBHOOK_URL`).
+- [ ] Tạo label `docs-not-needed`.
+- [ ] Điền owner trong `CODEOWNERS` và bật code-owner review.
+- [ ] Tuỳ chọn: đặt `SLACK_WEBHOOK_URL` cho `docs-notify.yml` (hoặc `CHAT_PROVIDER=teams` và `TEAMS_WEBHOOK_URL`).
 - [ ] Không làm trong pilot. Về sau, chỉ khi security owner đã phê duyệt: copy `docs-ai-proposal.yml` và `tools/docs-ai/package.json`, commit lockfile, rồi bật job.

@@ -1,26 +1,48 @@
 # Team AI-assisted development standard
 
-**Version:** 0.2.0 · **Status:** Draft for Wave 1 pilot · **Owners:** see the Named people table in `docs/en/03-roles-and-responsibilities.md`
+**Version:** 0.3.0 · **Status:** Draft for Wave 1 pilot · **Owners:** see the Named people table in `docs/en/03-roles-and-responsibilities.md`
 
 [English](#english) · [Tiếng Việt](#tiếng-việt)
 
 ## English
 
+**Start here: [Quickstart](docs/en/00-quickstart.md)** — adopt the standard in a repository with one command and about 30 minutes of project details.
+
 ### Purpose
 
-This repository defines how our team uses AI tools in software development. We build and maintain multi-channel e-commerce integration middleware: marketplace adapters, stock sync and order conversion. We work in Node.js/TypeScript with NestJS, TypeORM, MySQL and AWS. We handle client source code and customer data. The goal is faster delivery with the same or better quality, and without exposing confidential data.
+This repository defines how our team uses AI tools in software development. We build and maintain multi-channel e-commerce integration middleware: marketplace adapters, stock sync and order conversion. We work in Node.js/TypeScript (mostly NestJS), TypeORM, MySQL or PostgreSQL, and AWS. We handle client source code and customer data. The goal is faster delivery with the same or better quality, and without exposing confidential data.
 
 ### Scope
 
 - Every developer on the team, every repository (internal and client) and every AI tool used for development work.
-- Covered: which tools and data are allowed, the workflow and its evidence, roles, PR review, security, LLM features inside our products, context and cost, the rollout plan, documentation automation, and how this standard is versioned and distributed.
+- Covered: which tools and data are allowed, the workflow and its evidence, roles, PR review, security, LLM features inside our products, context and cost, the rollout plan, documentation automation, and how this standard is versioned, adopted and updated.
 - Not covered: general coding standards that our linters, CI and existing guidelines already define.
+
+### Adopt in a repository
+
+```bash
+cd <your-repository>
+node ../team-ai-standards/scripts/adopt.mjs --profile strict --dry-run
+node ../team-ai-standards/scripts/adopt.mjs --profile strict --yes
+```
+
+The script detects the stack from `package.json` (framework, databases, data access, AWS) and shows it; confirm with `--yes` or pass `--framework`, `--db`, `--data-access`, `--with` (or a shortcut such as `--stack nestjs-mysql`). Profiles: `strict` (client repositories, default) or `standard` (internal only). The script never overwrites existing files; it writes `*.proposed` files and a merge checklist instead. Then follow the printed checklist (details in the quickstart).
+
+### Three layers in a project repository
+
+| Layer | What | Who changes it |
+| --- | --- | --- |
+| 1. Standard | `.claude/rules/std/`, `std-*` agents and skills, `.claude/std/`, generated `.claude/settings.json`, PR template, CODEOWNERS block, `std-check` workflow | Only update PRs from this repository |
+| 2. Project | `CLAUDE.md`, `.claude/project.json` (stack, profile, commands, extra permissions), `.claude/rules/local/` | The repository's team, by PR |
+| 3. Personal | `.claude/settings.local.json` | Each developer; never committed |
+
+Details: `docs/en/10-versioning-and-distribution.md`.
 
 ### Contents
 
 | Path | What it is |
 | --- | --- |
-| `docs/en/`, `docs/vi/` | Human-facing documents, same structure in both languages |
+| `docs/en/00-quickstart.md` | One page for developers: adopt, daily workflow, where to change things |
 | `docs/en/01-ai-usage-policy.md` | Approved tools, data classification, accountability |
 | `docs/en/02-development-workflow.md` | Plan → test → implement → verify → review → PR → merge, Definition of Done, evidence |
 | `docs/en/03-roles-and-responsibilities.md` | Who does and approves what; the Named people table |
@@ -29,57 +51,63 @@ This repository defines how our team uses AI tools in software development. We b
 | `docs/en/06-llm-in-product-pattern.md` | How product features may call an LLM safely |
 | `docs/en/07-context-and-cost.md` | What goes where, session hygiene, model choice |
 | `docs/en/08-adoption-plan.md` | Three-wave rollout, metrics, training |
-| `docs/en/09-docs-automation.md` | Keeping documentation current: reminders, CI checks, generated sections, notifications |
-| `docs/en/10-versioning-and-distribution.md` | SemVer, CHANGELOG, releases, update PRs to project repositories |
-| `docs/vi/ai-files-explained.md` | Vietnamese explanation of every AI-facing file |
-| `templates/` | Files to copy into a project repository (AI-facing, English) |
-| `templates/hooks/` | Optional, opt-in hooks that only check or remind |
-| `templates/scripts/` | Docs generator and docs-update check used by the docs workflows |
-| `templates/.github/` | PR template, CODEOWNERS example, docs workflows |
-| `templates/tools/docs-ai/` | Pinned CLI manifest for the optional AI docs job (not used in the pilot) |
-| `scripts/` | Checks and tools for this repository (parity, budget, JSON, settings generator, sync for update PRs, smoke test) |
+| `docs/en/09-docs-automation.md` | Keeping documentation current |
+| `docs/en/10-versioning-and-distribution.md` | Versions, the three layers, adoption flags, update PRs |
+| `docs/en/11-adding-a-stack-fragment.md` | How to add a framework, database or data-access fragment |
+| `docs/vi/` | The same documents in Vietnamese, plus `ai-files-explained.md` |
+| `templates/` | Layer 1 files exactly as a project repository receives them, the `CLAUDE.md` skeleton, and `fragments/` (composable stack fragments and their registry) |
+| `scripts/adopt.mjs` | Adoption script, run from a project repository |
+| `scripts/sync-standard.mjs` | Writes Layer 1 files for an update PR |
+| `scripts/` (other) | Checks for this repository: parity, budget per stack, JSON, settings generator, audit exceptions, smoke tests |
 | `.github/workflows/` | CI for this repository and the release update job |
-| `audit-exceptions.json` | Accepted npm audit advisories for this repository's dev tools, with reasons and review dates |
+| `audit-exceptions.json` | Accepted npm audit advisories for this repository's dev tools |
 | `CHANGELOG.md` | Release history |
-
-### How to adopt in a repository
-
-1. **Classify the repository.** Client code → **strict** profile. Internal code with no client data → **standard** profile. If unsure → strict. Check that AI use is allowed for this repository (doc 01).
-2. **Copy the templates** (see `docs/vi/ai-files-explained.md` for the full table):
-   - `templates/CLAUDE.md` → `CLAUDE.md`, and fill every `<placeholder>`.
-   - `templates/.claude/settings.json` (strict) or `templates/.claude/settings.standard.json` (standard) → `.claude/settings.json`.
-   - `templates/.claude/rules`, `agents`, `skills` and `STANDARD_VERSION` → `.claude/`.
-   - `templates/.github/pull_request_template.md` and `CODEOWNERS` → `.github/`.
-3. **Fill in the command table.** In CLAUDE.md, write this repository's command for each placeholder (`<build-cmd>`, `<typecheck-cmd>`, `<unit-test-cmd>`, `<integration-test-cmd>`, `<migration-show-cmd>`, …). Replace the same placeholders in `.claude/settings.json`. Skills read the table; nothing else needs to change.
-4. **Add** `config/env.example` with fake values. Confirm `.env*` is git-ignored.
-5. **Optional:** enable hooks (`templates/hooks/README.md`) and the docs workflows (doc 09).
-6. **Open a PR** with these files. It is reviewed like code.
-7. **Register** the repository in `.github/standard-targets.json` of this repository, so it receives update PRs (doc 10).
-8. Check the size: `wc -w CLAUDE.md .claude/rules/*/*.md` should stay under about 2,000 words after filling in.
 
 ### Versioning
 
-- Semantic versioning, CHANGELOG rules, release tags and update PRs are described in `docs/en/10-versioning-and-distribution.md`.
-- Each project repository records the version it uses in `.claude/STANDARD_VERSION`.
-- Changes to this repository go through a PR; `npm run check` must pass locally: Markdown lint, JSON, settings, bilingual parity, context budget, smoke tests. CI also runs actionlint on all workflows and checks `npm audit` against `audit-exceptions.json`.
+- Semantic versioning, CHANGELOG rules, release tags and update PRs: `docs/en/10-versioning-and-distribution.md`.
+- Each project repository records its version in `.claude/STANDARD_VERSION`.
+- Changes to this repository go through a PR; `npm run check` must pass locally: Markdown lint, JSON, settings, bilingual parity, context budget for every valid fragment combination, smoke tests. CI also runs actionlint on all workflows and checks `npm audit` against `audit-exceptions.json`.
 
 ## Tiếng Việt
 
+**Bắt đầu tại đây: [Bắt đầu nhanh](docs/vi/00-quickstart.md)** — áp dụng bộ tiêu chuẩn vào một repo bằng một lệnh và khoảng 30 phút điền thông tin dự án.
+
 ### Mục đích
 
-Repo này quy định cách team sử dụng công cụ AI trong phát triển phần mềm. Team xây dựng và vận hành middleware tích hợp thương mại điện tử đa kênh: adapter cho các marketplace, đồng bộ tồn kho, chuyển đổi đơn hàng. Stack là Node.js/TypeScript với NestJS, TypeORM, MySQL và AWS. Team làm việc với source code của khách hàng và dữ liệu khách hàng. Mục tiêu là giao hàng nhanh hơn, chất lượng bằng hoặc tốt hơn, và không để lộ dữ liệu mật.
+Repo này quy định cách team sử dụng công cụ AI trong phát triển phần mềm. Team xây dựng và vận hành middleware tích hợp thương mại điện tử đa kênh: adapter cho các marketplace, đồng bộ tồn kho, chuyển đổi đơn hàng. Stack là Node.js/TypeScript (chủ yếu NestJS), TypeORM, MySQL hoặc PostgreSQL, và AWS. Team làm việc với source code của khách hàng và dữ liệu khách hàng. Mục tiêu là giao hàng nhanh hơn, chất lượng bằng hoặc tốt hơn, và không để lộ dữ liệu mật.
 
 ### Phạm vi
 
 - Áp dụng cho mọi developer trong team, mọi repo (nội bộ lẫn của khách hàng) và mọi công cụ AI dùng trong công việc phát triển.
-- Bao gồm: công cụ và dữ liệu được phép, quy trình làm việc và bằng chứng (evidence), vai trò, review PR, bảo mật, tính năng có gọi LLM trong sản phẩm, context và chi phí, kế hoạch triển khai, tự động hoá tài liệu, và cách đánh version và phân phối bộ tiêu chuẩn.
+- Bao gồm: công cụ và dữ liệu được phép, quy trình làm việc và bằng chứng (evidence), vai trò, review PR, bảo mật, tính năng có gọi LLM trong sản phẩm, context và chi phí, kế hoạch triển khai, tự động hoá tài liệu, và cách đánh version, áp dụng và cập nhật bộ tiêu chuẩn.
 - Không bao gồm: coding standard chung đã được linter, CI và các hướng dẫn hiện có quy định.
+
+### Áp dụng cho một repo
+
+```bash
+cd <your-repository>
+node ../team-ai-standards/scripts/adopt.mjs --profile strict --dry-run
+node ../team-ai-standards/scripts/adopt.mjs --profile strict --yes
+```
+
+Script tự nhận diện stack từ `package.json` (framework, database, data access, AWS) và in ra; xác nhận bằng `--yes` hoặc truyền `--framework`, `--db`, `--data-access`, `--with` (hoặc lối tắt như `--stack nestjs-mysql`). Profile: `strict` (repo khách hàng, mặc định) hoặc `standard` (chỉ repo nội bộ). Script không bao giờ ghi đè file đã có; thay vào đó nó tạo file `*.proposed` và một checklist để gộp. Sau đó làm theo checklist được in ra (chi tiết trong tài liệu bắt đầu nhanh).
+
+### Ba lớp trong một repo dự án
+
+| Lớp | Gồm những gì | Ai được thay đổi |
+| --- | --- | --- |
+| 1. Tiêu chuẩn | `.claude/rules/std/`, agent và skill `std-*`, `.claude/std/`, `.claude/settings.json` (được sinh ra), PR template, khối trong CODEOWNERS, workflow `std-check` | Chỉ qua PR cập nhật từ repo này |
+| 2. Dự án | `CLAUDE.md`, `.claude/project.json` (stack, profile, lệnh, quyền bổ sung), `.claude/rules/local/` | Team của repo, qua PR |
+| 3. Cá nhân | `.claude/settings.local.json` | Từng developer; không bao giờ commit |
+
+Chi tiết: `docs/vi/10-versioning-and-distribution.md`.
 
 ### Nội dung
 
 | Đường dẫn | Là gì |
 | --- | --- |
-| `docs/en/`, `docs/vi/` | Tài liệu cho người đọc, hai ngôn ngữ cùng cấu trúc |
+| `docs/vi/00-quickstart.md` | Một trang cho developer: áp dụng, quy trình hằng ngày, sửa ở đâu |
 | `docs/vi/01-ai-usage-policy.md` | Công cụ được duyệt, phân loại dữ liệu, trách nhiệm |
 | `docs/vi/02-development-workflow.md` | Plan → test → code → verify → review → PR → merge, Definition of Done, bằng chứng |
 | `docs/vi/03-roles-and-responsibilities.md` | Ai làm gì, ai duyệt gì; bảng Named people |
@@ -88,36 +116,20 @@ Repo này quy định cách team sử dụng công cụ AI trong phát triển p
 | `docs/vi/06-llm-in-product-pattern.md` | Cách tính năng sản phẩm gọi LLM một cách an toàn |
 | `docs/vi/07-context-and-cost.md` | Nội dung nào đặt ở đâu, giữ session gọn, chọn model |
 | `docs/vi/08-adoption-plan.md` | Triển khai 3 đợt, chỉ số, đào tạo |
-| `docs/vi/09-docs-automation.md` | Giữ tài liệu luôn cập nhật: nhắc nhở, kiểm tra trong CI, phần tự sinh, thông báo |
-| `docs/vi/10-versioning-and-distribution.md` | SemVer, CHANGELOG, phát hành, PR cập nhật tới các repo dự án |
+| `docs/vi/09-docs-automation.md` | Giữ tài liệu luôn cập nhật |
+| `docs/vi/10-versioning-and-distribution.md` | Version, ba lớp, flag khi áp dụng, PR cập nhật |
+| `docs/vi/11-adding-a-stack-fragment.md` | Cách thêm fragment cho framework, database hoặc data access |
 | `docs/vi/ai-files-explained.md` | Giải thích bằng tiếng Việt từng file dành cho AI |
-| `templates/` | File để copy vào repo dự án (dành cho AI, viết bằng tiếng Anh) |
-| `templates/hooks/` | Hook không bắt buộc, chỉ kiểm tra hoặc nhắc nhở |
-| `templates/scripts/` | Script sinh tài liệu và kiểm tra cập nhật tài liệu, dùng cho các workflow docs |
-| `templates/.github/` | PR template, ví dụ CODEOWNERS, các workflow docs |
-| `templates/tools/docs-ai/` | Manifest ghim version CLI cho job AI docs tuỳ chọn (không dùng trong pilot) |
-| `scripts/` | Công cụ kiểm tra cho repo này (parity, budget, JSON, sinh settings, đồng bộ cho PR cập nhật, smoke test) |
+| `templates/` | File lớp 1 đúng như repo dự án nhận được, khung `CLAUDE.md`, và `fragments/` (các stack fragment ghép được và registry của chúng) |
+| `scripts/adopt.mjs` | Script áp dụng, chạy từ repo dự án |
+| `scripts/sync-standard.mjs` | Ghi các file lớp 1 cho PR cập nhật |
+| `scripts/` (còn lại) | Công cụ kiểm tra cho repo này: parity, budget theo từng stack, JSON, sinh settings, ngoại lệ audit, smoke test |
 | `.github/workflows/` | CI của repo này và job cập nhật khi phát hành |
-| `audit-exceptions.json` | Các cảnh báo npm audit đã chấp nhận cho công cụ dev của repo này, kèm lý do và ngày review lại |
+| `audit-exceptions.json` | Các cảnh báo npm audit đã chấp nhận cho công cụ dev của repo này |
 | `CHANGELOG.md` | Lịch sử phát hành |
-
-### Cách áp dụng cho một repo
-
-1. **Phân loại repo.** Có code của khách hàng → profile **strict**. Code nội bộ, không có dữ liệu khách hàng → profile **standard**. Không chắc → strict. Kiểm tra repo này có được phép dùng AI không (tài liệu 01).
-2. **Copy template** (bảng đầy đủ ở `docs/vi/ai-files-explained.md`):
-   - `templates/CLAUDE.md` → `CLAUDE.md`, rồi điền hết các `<placeholder>`.
-   - `templates/.claude/settings.json` (strict) hoặc `templates/.claude/settings.standard.json` (standard) → `.claude/settings.json`.
-   - `templates/.claude/rules`, `agents`, `skills` và `STANDARD_VERSION` → `.claude/`.
-   - `templates/.github/pull_request_template.md` và `CODEOWNERS` → `.github/`.
-3. **Điền bảng lệnh.** Trong CLAUDE.md, ghi lệnh thật của repo cho từng placeholder (`<build-cmd>`, `<typecheck-cmd>`, `<unit-test-cmd>`, `<integration-test-cmd>`, `<migration-show-cmd>`, …). Thay các placeholder tương ứng trong `.claude/settings.json`. Các skill đọc bảng này nên không cần sửa gì khác.
-4. **Thêm** `config/env.example` với giá trị giả. Kiểm tra `.env*` đã nằm trong `.gitignore`.
-5. **Không bắt buộc:** bật hook (`templates/hooks/README.md`) và các workflow docs (tài liệu 09).
-6. **Mở PR** chứa các file này. PR được review như code.
-7. **Đăng ký** repo trong `.github/standard-targets.json` của repo này để nhận PR cập nhật (tài liệu 10).
-8. Kiểm tra kích thước: `wc -w CLAUDE.md .claude/rules/*/*.md` nên dưới khoảng 2.000 từ sau khi điền.
 
 ### Đánh version
 
-- Semantic versioning, quy tắc CHANGELOG, tag phát hành và PR cập nhật được mô tả trong `docs/vi/10-versioning-and-distribution.md`.
+- Semantic versioning, quy tắc CHANGELOG, tag phát hành và PR cập nhật: `docs/vi/10-versioning-and-distribution.md`.
 - Mỗi repo dự án ghi version đang dùng trong `.claude/STANDARD_VERSION`.
-- Mọi thay đổi trong repo này đi qua PR; `npm run check` phải pass ở máy local: Markdown lint, JSON, settings, parity hai ngôn ngữ, context budget, smoke test. CI chạy thêm actionlint cho mọi workflow và đối chiếu `npm audit` với `audit-exceptions.json`.
+- Mọi thay đổi trong repo này đi qua PR; `npm run check` phải pass ở máy local: Markdown lint, JSON, settings, parity hai ngôn ngữ, context budget cho mọi tổ hợp fragment hợp lệ, smoke test. CI chạy thêm actionlint cho mọi workflow và đối chiếu `npm audit` với `audit-exceptions.json`.

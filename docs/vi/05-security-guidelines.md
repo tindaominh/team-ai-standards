@@ -30,8 +30,8 @@ Mỗi repository có `.claude/settings.json` lấy từ template của team. Pro
 
 | Loại repository | Profile | File sử dụng | AI được ghi git |
 | --- | --- | --- | --- |
-| **Repository của khách hàng** (có code của khách hàng) | **strict** (mặc định) | `templates/.claude/settings.json` | Không. Không add, commit, checkout, stash, push. |
-| **Repository nội bộ** (code của mình, không có dữ liệu khách hàng) | **standard** | `templates/.claude/settings.standard.json`, đổi tên thành `settings.json` | Add/commit/branch local khi bạn xác nhận. Không bao giờ push. |
+| **Repository của khách hàng** (có code của khách hàng) | **strict** (mặc định) | `adopt.mjs --profile strict` (base: `.claude/std/settings.strict.json`) | Không. Không add, commit, checkout, stash, push. |
+| **Repository nội bộ** (code của mình, không có dữ liệu khách hàng) | **standard** | `adopt.mjs --profile standard` (base: `.claude/std/settings.standard.json`) | Add/commit/branch local khi bạn xác nhận. Không bao giờ push. |
 
 Nếu không chắc repository thuộc loại nào, dùng **strict**.
 
@@ -64,7 +64,8 @@ Giới hạn của permission rule (theo tài liệu chính thức của Claude 
 
 Ghi đè ở local:
 
-- Thay đổi cá nhân đặt trong `.claude/settings.local.json` (đã git-ignore). Bạn được phép làm settings của mình chặt hơn. Bạn không được nới danh sách deny cho repository của khách hàng nếu chưa có phê duyệt của security owner.
+- `.claude/settings.json` được sinh ra từ base profile và `.claude/project.json`; không bao giờ sửa tay. Rule riêng của repository đặt trong `permissions` của `.claude/project.json`.
+- Thay đổi cá nhân đặt trong `.claude/settings.local.json` (không bao giờ commit). Rule deny và ask của bộ tiêu chuẩn vẫn có hiệu lực: tài liệu chính thức ghi rõ "if a tool is denied at any level, no other level can allow it" (công cụ đã bị deny ở bất kỳ cấp nào thì không cấp nào khác cho phép lại được). Những gì được và không được đặt trong file đó liệt kê ở tài liệu 10, mục "Personal settings (Layer 3)". Bạn không được nới rule cho repository của khách hàng nếu chưa có phê duyệt của security owner.
 
 ## 4. Phần mở rộng của bên thứ ba: plugin, skill, hook, MCP server
 
@@ -115,7 +116,7 @@ Tự động từ chối cho repository của khách hàng: bất cứ thứ gì
 
 Hook của team chỉ được **kiểm tra** hoặc **nhắc nhở**. Hook của team không bao giờ được ghi hoặc sửa file trong repository, ghi file dùng chung (docs, CLAUDE.md, settings), commit hay push, gọi mạng, tải bất cứ thứ gì về, hoặc gửi dữ liệu ra khỏi máy. Việc ghi và công bố thay đổi do developer làm, hoặc do CI làm trên pull request (xem 09).
 
-Các hook tuỳ chọn của team (`templates/hooks/`) tuân theo quy tắc này: tất định, chỉ chạy binary local ở chế độ kiểm tra, và ghi rõ chúng đọc và chạy những gì. Mọi hook mới đều phải qua cùng quy trình review.
+Các hook tuỳ chọn của team (`.claude/std/hooks/`, bật bằng `"hooks": true` trong `.claude/project.json`) tuân theo quy tắc này: tất định, chỉ chạy binary local ở chế độ kiểm tra, và ghi rõ chúng đọc và chạy những gì. Mọi hook mới đều phải qua cùng quy trình review.
 
 ## 5. Quản lý secret
 

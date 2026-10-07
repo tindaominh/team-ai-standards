@@ -39,7 +39,7 @@ Targets are set at the end of Wave 1, based on its data, not before.
 
 - [ ] Pilot repository chosen and approved by the tech lead.
 - [ ] Baseline metrics collected.
-- [ ] Repository has the standard installed: CLAUDE.md with the command table filled in, `standard` profile settings with the command placeholders replaced, `.claude/STANDARD_VERSION`, rules, agents, skills, PR template.
+- [ ] Repository has the standard installed with `scripts/adopt.mjs --profile standard` (00-quickstart): `TODO(adopt)` sections filled in, commands set in `.claude/project.json`, `compose-settings.mjs --check` passing.
 - [ ] Claude Code listed as "Under evaluation" in the approved tools table, with the pilot repository named.
 - [ ] Both early adopters read docs 01–05 and did a 1-hour walkthrough with the owner of the standard.
 
@@ -100,7 +100,7 @@ Targets are set at the end of Wave 1, based on its data, not before.
 
 **Activities:**
 
-- Install the standard in each allowed repository. One PR per repository, reviewed like code.
+- Install the standard in each allowed repository with `scripts/adopt.mjs` (about 30 minutes per repository). One PR per repository, reviewed like code.
 - From then on, repositories receive new versions through the update PRs described in 10.
 - Champions available for questions; monthly sync.
 

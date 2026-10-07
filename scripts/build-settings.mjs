@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-// Single source for the two permission profiles in templates/.claude/:
-//   settings.json           strict   (default, client repositories)
+// Single source for the two base permission profiles in templates/.claude/std/:
+//   settings.strict.json    strict   (default, client repositories)
 //   settings.standard.json  standard (internal repositories only)
+// In a project repository, .claude/std/compose-settings.mjs combines the chosen
+// base profile with .claude/project.json into .claude/settings.json.
 // Usage: node scripts/build-settings.mjs           write both files
 //        node scripts/build-settings.mjs --check   exit 1 if files are stale
 //
@@ -9,13 +11,12 @@
 //   Bash(cmd *)  matches "cmd" and "cmd <anything>"; the space before * is part of the rule.
 //   Bash(cmd*)   no space: also matches "cmdX" (used for deploy:prod style scripts).
 //   Precedence: deny > ask > allow. Deny rules also apply to subagents.
-// Command placeholders such as <unit-test-cmd> are replaced per repository
-// using the command table in CLAUDE.md. An unfilled placeholder never matches,
-// so the command simply asks for permission.
+// Command placeholders such as <unit-test-cmd> are replaced with the commands in
+// .claude/project.json; rules whose command is not set are left out.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const OUT = new URL('../templates/.claude/', import.meta.url).pathname;
+const OUT = new URL('../templates/.claude/std/', import.meta.url).pathname;
 const bash = (cmd) => `Bash(${cmd})`;
 
 const allow = [
@@ -90,8 +91,7 @@ const denyCommon = [
   ...['gh pr merge', 'gh pr review', 'gh release', 'gh workflow run', 'gh secret', 'gh variable']
     .map((c) => bash(`${c} *`)),
   // Direct database clients (match only commands that start with these binaries)
-  bash('mysql *'),
-  bash('mysqldump *')
+  ...['mysql', 'mysqldump', 'psql', 'pg_dump', 'pg_dumpall', 'pg_restore'].map((c) => bash(`${c} *`))
 ];
 
 const gitWrites = ['git add', 'git commit', 'git checkout', 'git switch', 'git restore', 'git stash',
@@ -111,7 +111,7 @@ const profile = (extraAsk, extraDeny) => ({
 });
 
 const files = {
-  'settings.json': profile([], [...gitWrites, ...gitAlwaysDenied].map((c) => bash(`${c} *`))),
+  'settings.strict.json': profile([], [...gitWrites, ...gitAlwaysDenied].map((c) => bash(`${c} *`))),
   'settings.standard.json': profile(gitWrites.map((c) => bash(`${c} *`)), gitAlwaysDenied.map((c) => bash(`${c} *`)))
 };
 
@@ -125,12 +125,12 @@ for (const [name, value] of Object.entries(files)) {
     try { current = readFileSync(path, 'utf8'); } catch { /* missing */ }
     if (current !== text) {
       stale += 1;
-      console.error(`stale: templates/.claude/${name}`);
+      console.error(`stale: templates/.claude/std/${name}`);
     }
   } else {
     writeFileSync(path, text);
     const p = value.permissions;
-    console.log(`wrote templates/.claude/${name}: allow ${p.allow.length}, ask ${p.ask.length}, deny ${p.deny.length}`);
+    console.log(`wrote templates/.claude/std/${name}: allow ${p.allow.length}, ask ${p.ask.length}, deny ${p.deny.length}`);
   }
 }
 if (stale) {
