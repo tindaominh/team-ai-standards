@@ -27,7 +27,7 @@ Một fragment dạy AI về một phần trong stack của repository: một fr
    - không lặp lại điều mà chiều khác đã nói (ví dụ, fragment framework không nói gì về migration).
 3. **Đặt ví dụ trong skill, không đặt trong rule.** Code minh hoạ cách dựng class cần test, mock data access hoặc viết transaction đặt trong `tdd.md`. Cách tạo, cấu hình và chạy migration đặt trong `migration.md`. Chúng chỉ được load khi skill chạy, nên không tính vào context budget.
 4. **Kiểm tra tổ hợp.** Nếu giá trị mới không thể dùng cùng một số giá trị khác, thêm quy tắc vào `validate()` trong `scripts/lib/standard.mjs` (lỗi cho tổ hợp không thể, cảnh báo cho tổ hợp bất thường).
-5. **Thêm test** trong `scripts/smoke-test.mjs`:
+5. **Thêm test** trong `scripts/smoke-test.mjs`. Test chạy trên một bản sao tạm của bộ tiêu chuẩn; hãy đọc giá trị mong đợi từ bản sao đó (giá trị trong registry, khối CODEOWNERS) thay vì viết cứng nội dung hiện tại, và dùng các dependency giả `fixture-*` cho trường hợp dependency chưa có fragment:
    - detect: một `package.json` có dependency mới chọn đúng giá trị mới;
    - không rõ ràng: nếu có thể đụng với một giá trị đã có, việc detect phải dừng lại và nêu tên cả hai;
    - cài đặt: adopt với flag mới cài rule (và file skill) mà không còn sót `{{…}}`;

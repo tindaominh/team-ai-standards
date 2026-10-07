@@ -27,7 +27,7 @@ A fragment teaches the AI one part of a repository's stack: a framework, a datab
    - nothing that another dimension already says (for example, a framework fragment says nothing about migrations).
 3. **Put examples in the skills, not the rule.** Code that shows how to build a class under test, mock data access or write a transaction goes in `tdd.md`. How migrations are created, configured and run goes in `migration.md`. They load only when the skill runs, so they do not count against the context budget.
 4. **Check combinations.** If the new value cannot work with some others, add the rule to `validate()` in `scripts/lib/standard.mjs` (an error for impossible combinations, a warning for unusual ones).
-5. **Add tests** in `scripts/smoke-test.mjs`:
+5. **Add tests** in `scripts/smoke-test.mjs`. Tests run against a temporary copy of the standard; read expectations from that copy (registry values, CODEOWNERS block) instead of hard-coding live content, and use the synthetic `fixture-*` dependencies for unsupported-dependency cases:
    - detection: a `package.json` with the new dependency selects the new value;
    - ambiguity: if it can clash with an existing value, detection stops and names both;
    - installation: adopting with the new flag installs the rule (and skill files) with no `{{…}}` left;

@@ -17,6 +17,11 @@ function check(name, ok, detail = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok || !detail ? '' : `\n      ${detail}`}`);
   if (!ok) failures += 1;
 }
+let skipped = 0;
+function skip(name, reason) {
+  console.log(`SKIP  ${name} (${reason})`);
+  skipped += 1;
+}
 const run = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: 'utf8', ...opts });
 
 try {
@@ -67,15 +72,37 @@ try {
   check('generate-docs: missing env schema fails with a clear message', missing.status === 1 && missing.stderr.includes('is missing'), missing.stderr);
 
   // 2. adopt.mjs, compose-settings.mjs and sync-standard.mjs
-  // The standard is copied so that its CODEOWNERS block can name a real team;
-  // the real repository still has the placeholder and must refuse to run.
-  const STD = join(work, 'standard');
-  cpSync(join(ROOT, 'scripts'), join(STD, 'scripts'), { recursive: true });
-  cpSync(T, join(STD, 'templates'), { recursive: true });
-  const coTemplate = join(STD, 'templates/.github/CODEOWNERS');
-  writeFileSync(coTemplate, readFileSync(coTemplate, 'utf8').replaceAll('@<org>/<ai-standard-owners>', '@acme/ai-standard-owners'));
+  // Tests run against temporary copies of the standard (fixtures), never against
+  // assumptions about the live templates, which are expected to change:
+  //   STD              owners set (filled in only if the live file still has a placeholder),
+  //                    plus synthetic "unsupported" dependencies in the registry;
+  //   STD_PLACEHOLDER  same, but the CODEOWNERS block has placeholder owners.
+  const PLACEHOLDER_RE = /@<[^>\s]+>(\/<[^>\s]+>)?/;
+  const BLOCK_RE = /# BEGIN team-ai-standard[\s\S]*?# END team-ai-standard/;
+  const blockOf = (text) => (BLOCK_RE.exec(text) || [''])[0];
+  const copyStandard = (dir) => {
+    cpSync(join(ROOT, 'scripts'), join(dir, 'scripts'), { recursive: true });
+    cpSync(T, join(dir, 'templates'), { recursive: true });
+    return dir;
+  };
+  const setOwners = (dir, owner) => {
+    const file = join(dir, 'templates/.github/CODEOWNERS');
+    const text = readFileSync(file, 'utf8');
+    const block = blockOf(text);
+    writeFileSync(file, text.replace(block, block.replace(/@\S+/g, owner)));
+  };
+  const FIXTURE_UNSUPPORTED = { 'fixture-web-framework': 'framework', 'fixture-orm': 'dataAccess', 'fixture-late-framework': 'framework' };
+  const STD = copyStandard(join(work, 'standard'));
+  if (PLACEHOLDER_RE.test(blockOf(readFileSync(join(T, '.github/CODEOWNERS'), 'utf8')))) setOwners(STD, '@fixture-org/ai-standard-owners');
+  const regPath = join(STD, 'templates/fragments/fragments.json');
+  const fixtureRegistry = JSON.parse(readFileSync(regPath, 'utf8'));
+  fixtureRegistry.unsupported = { ...fixtureRegistry.unsupported, ...FIXTURE_UNSUPPORTED };
+  writeFileSync(regPath, `${JSON.stringify(fixtureRegistry, null, 2)}\n`);
+  const STD_PLACEHOLDER = copyStandard(join(work, 'standard-placeholder'));
+  setOwners(STD_PLACEHOLDER, '@<org>/<ai-standard-owners>');
   const ADOPT = join(STD, 'scripts/adopt.mjs');
   const SYNC = join(STD, 'scripts/sync-standard.mjs');
+  const valuesOf = (dim) => Object.keys(fixtureRegistry.dimensions[dim].values).join('|');
   const newRepo = (name, files = {}) => {
     const dir = join(work, name);
     mkdirSync(dir, { recursive: true });
@@ -96,7 +123,7 @@ try {
   const nestDeps = ['@nestjs/core', 'mysql2', 'typeorm', '@nestjs/typeorm'];
 
   // 2a. the standard refuses to be adopted or synced while CODEOWNERS has placeholders
-  const refused = run('node', [join(ROOT, 'scripts/adopt.mjs'), '--stack', 'nestjs-mysql'], { cwd: newRepo('refused') });
+  const refused = run('node', [join(STD_PLACEHOLDER, 'scripts/adopt.mjs'), '--stack', 'nestjs-mysql'], { cwd: newRepo('refused') });
   check('adopt: refuses while the CODEOWNERS block has placeholder owners', refused.status === 2 && refused.stderr.includes('placeholder owners'), refused.stderr);
   check('adopt: refusal writes nothing', listFiles(join(work, 'refused')).length === 0);
 
@@ -144,8 +171,8 @@ try {
 
   // 2d'. dependencies without a fragment stop adoption unless the dimension is explicit
   const unsupportedCases = [
-    ['fastify', pkg(['fastify', 'pg']), 'fastify: no framework fragment exists', '--framework nestjs|express|none'],
-    ['@prisma/client next to pg', pkg(['express', '@prisma/client', 'pg']), '@prisma/client: no data-access fragment exists', '--data-access typeorm|raw|none']
+    ['framework dependency', pkg(['fixture-web-framework', 'pg']), 'fixture-web-framework: no framework fragment exists', `--framework ${valuesOf('framework')}`],
+    ['data-access dependency next to a driver', pkg(['express', 'fixture-orm', 'pg']), 'fixture-orm: no data-access fragment exists', `--data-access ${valuesOf('dataAccess')}`]
   ];
   unsupportedCases.forEach(([label, p, msg, flag], i) => {
     const dir = newRepo(`unsupported-${i}`, { 'package.json': p });
@@ -154,35 +181,33 @@ try {
     check(`unsupported ${label}: message names the dependency, the missing fragment, doc 11 and the flag`, r.stderr.includes(msg) && r.stderr.includes('11-adding-a-stack-fragment') && r.stderr.includes(flag), r.stderr);
     check(`unsupported ${label}: writes nothing`, listFiles(dir).length === 1);
   });
-  const ack = newRepo('unsupported-ack', { 'package.json': pkg(['fastify', 'pg', 'typeorm']) });
+  const ack = newRepo('unsupported-ack', { 'package.json': pkg(['fixture-web-framework', 'pg', 'typeorm']) });
   const ackRun = adopt(ack, '--framework', 'none', '--yes');
   check('unsupported: explicit flag lets adoption continue', ackRun.status === 0 && stackOf(ack).framework === 'none', ackRun.stderr);
-  check('unsupported: explicit override recorded as acknowledged', same(JSON.parse(readFileSync(join(ack, '.claude/project.json'), 'utf8')).acknowledgedUnsupported, ['fastify']));
-  check('unsupported: std-check does not warn for an acknowledged dependency', !compose(ack, '--check').stdout.includes('depends on fastify'));
+  check('unsupported: explicit override recorded as acknowledged', same(JSON.parse(readFileSync(join(ack, '.claude/project.json'), 'utf8')).acknowledgedUnsupported, ['fixture-web-framework']));
+  check('unsupported: std-check does not warn for an acknowledged dependency', !compose(ack, '--check').stdout.includes('depends on fixture-web-framework'));
   const ackPkg = JSON.parse(readFileSync(join(ack, 'package.json'), 'utf8'));
-  ackPkg.dependencies.koa = '2.0.0';
+  ackPkg.dependencies['fixture-late-framework'] = '1.0.0';
   writeFileSync(join(ack, 'package.json'), JSON.stringify(ackPkg));
   const ackCheck = compose(ack, '--check');
-  check('unsupported: std-check warns for a newly added dependency', ackCheck.stdout.includes('depends on koa') && !ackCheck.stdout.includes('depends on fastify'), ackCheck.stdout);
+  check('unsupported: std-check warns for a newly added dependency', ackCheck.stdout.includes('depends on fixture-late-framework') && !ackCheck.stdout.includes('depends on fixture-web-framework'), ackCheck.stdout);
   const ackSync = run('node', [SYNC, '--target', ack]);
-  check('unsupported: sync warns for the new dependency only', ackSync.status === 0 && ackSync.stdout.includes('`koa` has no framework fragment') && !ackSync.stdout.includes('`fastify`'), ackSync.stdout + ackSync.stderr);
-  const removedValue = adopt(newRepo('removed-value'), '--framework', 'fastify', '--data-access', 'none', '--without-optional');
-  check('removed fragment values are rejected', removedValue.status === 2 && removedValue.stderr.includes('framework must be one of: nestjs, express, none'), removedValue.stderr);
+  check('unsupported: sync warns for the new dependency only', ackSync.status === 0 && ackSync.stdout.includes('`fixture-late-framework` has no framework fragment') && !ackSync.stdout.includes('`fixture-web-framework`'), ackSync.stdout + ackSync.stderr);
+  const removedValue = adopt(newRepo('removed-value'), '--framework', 'fixture-not-a-framework', '--data-access', 'none', '--without-optional');
+  check('values outside the registry are rejected', removedValue.status === 2 && removedValue.stderr.includes(`framework must be one of: ${valuesOf('framework').split('|').join(', ')}`), removedValue.stderr);
 
   // 2e. aliases expand to the composable selection
-  const aliases = {
-    'nestjs-mysql': { framework: 'nestjs', databases: ['mysql'], dataAccess: 'typeorm', optional: ['aws'] },
-    'nestjs-postgres': { framework: 'nestjs', databases: ['postgres'], dataAccess: 'typeorm', optional: ['aws'] },
-    'node-postgres': { framework: 'none', databases: ['postgres'], dataAccess: 'typeorm', optional: ['aws'] }
-  };
-  for (const [alias, expected] of Object.entries(aliases)) {
+  // Expected expansions come from the registry; node-postgres is also checked against its documented meaning.
+  check('alias node-postgres: documented meaning (framework none + PostgreSQL + TypeORM + AWS)', same(fixtureRegistry.aliases['node-postgres'], { framework: 'none', databases: ['postgres'], dataAccess: 'typeorm', optional: ['aws'] }));
+  for (const [alias, expected] of Object.entries(fixtureRegistry.aliases)) {
     const dir = newRepo(`alias-${alias}`);
     const r = adopt(dir, '--stack', alias);
     check(`alias ${alias}: runs without --yes`, r.status === 0, r.stderr);
     check(`alias ${alias}: expands to the selection`, same(stackOf(dir), { runtime: 'node', ...expected }));
     const frag = (n) => existsSync(join(dir, `.claude/rules/std/fragments/${n}.md`));
-    check(`alias ${alias}: fragment rules installed`, frag(`framework-${expected.framework}`) && frag(`database-${expected.databases[0]}`) && frag('data-access-typeorm') && frag('optional-aws'));
-    const mig = readFileSync(join(dir, '.claude/skills/std-db-migration-review/data-access-typeorm.md'), 'utf8');
+    const hasRule = (dim, value) => !existsSync(join(STD, 'templates/fragments', fixtureRegistry.dimensions[dim].folder, value, 'rule.md')) || frag(`${fixtureRegistry.dimensions[dim].folder}-${value}`);
+    check(`alias ${alias}: fragment rules installed`, hasRule('framework', expected.framework) && expected.databases.every((d) => hasRule('databases', d)) && hasRule('dataAccess', expected.dataAccess) && expected.optional.every((o) => hasRule('optional', o)));
+    const mig = readFileSync(join(dir, `.claude/skills/std-db-migration-review/data-access-${expected.dataAccess}.md`), 'utf8');
     check(`alias ${alias}: data source type filled`, mig.includes(`type: '${expected.databases[0]}'`) && !/\{\{[A-Z_]+\}\}/.test(mig));
     check(`alias ${alias}: compose --check passes`, compose(dir, '--check').status === 0);
   }
@@ -212,7 +237,10 @@ try {
   }
   check('adopt existing repo: merge checklist written', existsSync(join(old, '.claude/std-adoption-checklist.md')));
   const coProposed = readFileSync(join(old, '.github/CODEOWNERS.proposed'), 'utf8');
-  check('adopt existing repo: CODEOWNERS proposal keeps original and appends block', coProposed.startsWith('* @org/team') && coProposed.includes('# BEGIN team-ai-standard') && coProposed.includes('@acme/ai-standard-owners'));
+  // Expected block: read now from the template this adoption used (equal to the live
+  // templates/.github/CODEOWNERS whenever that file names a real owner).
+  const expectedBlock = blockOf(readFileSync(join(STD, 'templates/.github/CODEOWNERS'), 'utf8'));
+  check('adopt existing repo: CODEOWNERS proposal keeps original and appends the current block', coProposed.startsWith('* @org/team') && expectedBlock.length > 0 && coProposed.trimEnd().endsWith(expectedBlock));
 
   // 2h. compose: settings, command table, edits, chained commands, hooks
   const app = det;
@@ -301,7 +329,20 @@ try {
   check('sync: table format change gives the exact command', s3.stdout.includes('Action required: regenerate the command table') && s3.stdout.includes('node .claude/std/compose-settings.mjs') && s3.stdout.includes('MAJOR'), s3.stdout);
   check('sync: CLAUDE.md still untouched', sha(app, 'CLAUDE.md') === claudeSha);
   check('sync: non-adopted repository is refused', run('node', [SYNC, '--target', newRepo('not-adopted')]).status === 1);
-  check('sync: refuses while the CODEOWNERS block has placeholder owners', run('node', [join(ROOT, 'scripts/sync-standard.mjs'), '--target', app]).status === 2);
+  const syncRefused = run('node', [join(STD_PLACEHOLDER, 'scripts/sync-standard.mjs'), '--target', app]);
+  check('sync: refuses while the CODEOWNERS block has placeholder owners', syncRefused.status === 2 && syncRefused.stderr.includes('placeholder owners'), syncRefused.stderr);
+
+  // 2k. the real standard (not a fixture) adopts and syncs when its CODEOWNERS names a real owner
+  const liveBlock = blockOf(readFileSync(join(T, '.github/CODEOWNERS'), 'utf8'));
+  if (PLACEHOLDER_RE.test(liveBlock)) {
+    skip('real standard: adopt and sync succeed with a real CODEOWNERS owner', 'templates/.github/CODEOWNERS still has placeholder owners');
+  } else {
+    const live = newRepo('live-standard');
+    const liveAdopt = run('node', [join(ROOT, 'scripts/adopt.mjs'), '--stack', 'nestjs-mysql'], { cwd: live });
+    const liveSync = run('node', [join(ROOT, 'scripts/sync-standard.mjs'), '--target', live]);
+    const liveCo = readFileSync(join(live, '.github/CODEOWNERS'), 'utf8');
+    check('real standard: adopt and sync succeed with a real CODEOWNERS owner', liveAdopt.status === 0 && liveSync.status === 0 && blockOf(liveCo) === liveBlock, liveAdopt.stderr + liveSync.stderr);
+  }
 
   // 3. hooks (run from a directory whose package.json is an ES module)
   const hp = join(work, 'hooks');
@@ -345,4 +386,4 @@ if (failures) {
   console.error(`\n${failures} smoke check(s) failed.`);
   process.exit(1);
 }
-console.log('\nPASS: all smoke checks.');
+console.log(`\nPASS: all smoke checks${skipped ? ` (${skipped} skipped)` : ''}.`);
