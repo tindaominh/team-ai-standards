@@ -4,6 +4,25 @@ All notable changes to this standard are recorded here. Versions follow `MAJOR.M
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-07
+
+Fixes from the first real automatic adoption (0.5.0 pilot), before the pilot applies it. Released as a minor version under doc 10 section 1: the profiles gain ask rules (stricter) and `--carry-allow` / `--drop-allow` change form (marked **Breaking**).
+
+### Fixed
+
+- `adopt.mjs` reported bare `allow` rules such as `Bash(pnpm test)` or `Bash(git status)` as not granted by the profile, although the profile allows `Bash(pnpm test *)`. The Claude Code permissions docs state that "a `*` at the end, with a space before it, also matches the bare command" (<https://code.claude.com/docs/en/permissions>), so the profile rules are unchanged. The merge now uses wildcard matching, with the bare form, and reports these rules as **covered**.
+- The bare form of an asked command (for example `Bash(pnpm migration:run)` when the profile asks `Bash(pnpm migration:run *)`) was offered for carrying. Any `allow` rule that could match a command the profile asks or denies, including broad rules such as `Bash(pnpm *)`, is now **unsafe — cannot be carried**. It is dropped, and adoption refuses to carry it even when requested.
+- Generated `.claude/settings.json` files and both profiles start with `"$schema": "https://json.schemastore.org/claude-code-settings.json"`; the key was silently dropped before. Adopted repositories get it with the update pull request (`compose-settings.mjs --check` reports the file as stale until then).
+
+### Changed
+
+- **Breaking:** `--carry-allow` and `--drop-allow` take one rule each and can be repeated: `--carry-allow "Bash(make test *)" --drop-allow "Bash(make lint *)"`. The new `--drop-allow-rest` drops every rule not named. Carried rules are stored in `.claude/project.json` → `permissions.allow`, as before. A bare `--carry-allow` now fails with "needs a value". A named rule that the settings do not have, or a rule passed to both flags, stops adoption.
+- `--dry-run` lists every existing `allow` rule under "Existing allow rules" as covered, unsafe, carried, dropped or needs decision. Each rule that needs a decision gets a hint (read-only, runs a long-lived process, uses cloud credentials) and its own entry under "Decisions required".
+
+### Added
+
+- Both profiles ask before commands that start long-running processes or use real credentials. Dev servers: `npm/pnpm/yarn` `dev*`, `start*`, `serve*` and `watch*` scripts, `next dev`, `nest start`, `vite`. Infrastructure tools: `cdk`, `terraform`, `sam`, `serverless`, `sls`, `pulumi`, `copilot`, `eb`, and `cdk*` package scripts. Deploy and destroy forms stay denied. Doc 05 documents the rule. Adopted repositories: after the update, review carried `allow` rules in `.claude/project.json` that start such processes, because ask wins over them.
+
 ## [0.5.0] - 2026-10-07
 
 Adoption becomes two commands with no manual merging in the normal case: `adopt.mjs --dry-run` to review, `adopt.mjs --yes` to apply exactly what was reviewed. Released as a minor version under doc 10 section 1: developers run adoption differently and the `CLAUDE.md` markers change (MAJOR-level changes, which go into a minor release while the major version is 0). No repository has adopted the standard yet.

@@ -262,7 +262,7 @@ try {
     '.github/CODEOWNERS': '* @org/team\n'
   };
   const old = gitRepo(newRepo('existing', existing));
-  const oFlags = ['--stack', 'nestjs-mysql', '--carry-allow'];
+  const oFlags = ['--stack', 'nestjs-mysql', '--carry-allow', 'Bash(make test *)'];
   const oDry = adopt(old, ...oFlags, '--dry-run');
   check('adopt existing repo: dry run passes', oDry.status === 0, oDry.stderr);
   check('adopt existing repo: dry run prints a unified diff of CLAUDE.md', oDry.stdout.includes('--- a/CLAUDE.md') && oDry.stdout.includes('+<!-- std:begin commands -->'));
@@ -329,6 +329,53 @@ try {
   const allowDry = adopt(allowRepo, '--stack', 'nestjs-mysql', '--dry-run');
   check('adopt: existing allow not in the profile is a required decision', allowDry.stdout.includes('allows what the profile does not: Bash(make *)') && allowDry.stdout.includes('--carry-allow'));
   check('adopt --yes: refuses until the allow decision is made', adopt(allowRepo, '--stack', 'nestjs-mysql', '--yes').status === 3 && !existsSync(join(allowRepo, '.claude/project.json')));
+
+  check('adopt: a bare --carry-allow (0.5 form) needs a rule', adopt(allowRepo, '--stack', 'nestjs-mysql', '--carry-allow', '--dry-run').stderr.includes('--carry-allow needs a value: <rule>'));
+
+  // Bare and wildcard forms: "Bash(cmd *)" also matches the bare command (Claude Code
+  // permissions docs), so a bare allow the profile already grants is covered.
+  const pnpmScripts = { build: 'nest build', lint: 'eslint .', test: 'jest', 'migration:run': 'typeorm migration:run' };
+  const bareAllow = ['Bash(pnpm test)', 'Bash(pnpm build)', 'Bash(git status)', 'Bash(git diff)', 'Bash(pnpm test *)'];
+  const bareRepo = gitRepo(newRepo('existing-bare', { 'package.json': pkg(nestDeps, pnpmScripts), 'pnpm-lock.yaml': '', '.claude/settings.json': `${JSON.stringify({ permissions: { allow: bareAllow } })}\n`, '.github/CODEOWNERS': '* @org/team\n' }));
+  const bareDry = adopt(bareRepo, '--stack', 'nestjs-mysql', '--dry-run');
+  check('adopt: bare forms of allowed commands are covered by "cmd *"', bareDry.status === 0 && bareAllow.every((r) => new RegExp(`covered\\s+${r.replace(/[()*]/g, '\\$&')}`).test(bareDry.stdout)) && !bareDry.stdout.includes('Decisions required'), bareDry.stdout + bareDry.stderr);
+  const bareYes = adopt(bareRepo, '--stack', 'nestjs-mysql', '--yes');
+  const bareProject = JSON.parse(readFileSync(join(bareRepo, '.claude/project.json'), 'utf8'));
+  const bareSettings = JSON.parse(readFileSync(join(bareRepo, '.claude/settings.json'), 'utf8'));
+  check('adopt: covered allows are not stored in project.json', bareYes.status === 0 && same(bareProject.permissions.allow, []), bareYes.stdout + bareYes.stderr);
+  check('adopt: generated settings.json starts with $schema', Object.keys(bareSettings)[0] === '$schema' && bareSettings.$schema === 'https://json.schemastore.org/claude-code-settings.json');
+  for (const p of ['strict', 'standard']) {
+    const base = JSON.parse(readFileSync(join(T, `.claude/std/settings.${p}.json`), 'utf8'));
+    check(`profile ${p}: $schema is the first key`, Object.keys(base)[0] === '$schema');
+    check(`profile ${p}: dev servers and cdk ask first`, ['Bash(pnpm dev*)', 'Bash(npm run dev*)', 'Bash(cdk *)', 'Bash(pnpm cdk*)'].every((r) => base.permissions.ask.includes(r)));
+  }
+
+  // Unsafe: an allow that overlaps a profile ask or deny, including the bare form of
+  // an asked command, is never carried, even when requested.
+  const unsafeRepo = gitRepo(newRepo('existing-unsafe', { 'package.json': pkg(nestDeps, pnpmScripts), 'pnpm-lock.yaml': '', '.claude/settings.json': `${JSON.stringify({ permissions: { allow: ['Bash(pnpm migration:run)', 'Bash(pnpm *)', 'Bash(pnpm dev)'] } })}\n`, '.github/CODEOWNERS': '* @org/team\n' }));
+  const unsafeDry = adopt(unsafeRepo, '--stack', 'nestjs-mysql', '--dry-run');
+  check('adopt: bare form of an asked command is unsafe', /unsafe — cannot be carried\s+Bash\(pnpm migration:run\)\s+\(profile asks Bash\(pnpm migration:run \*\)\)/.test(unsafeDry.stdout), unsafeDry.stdout);
+  check('adopt: broad allow overlapping a profile ask is unsafe', /unsafe — cannot be carried\s+Bash\(pnpm \*\)/.test(unsafeDry.stdout) && /unsafe — cannot be carried\s+Bash\(pnpm dev\)/.test(unsafeDry.stdout));
+  check('adopt: unsafe allows need no decision', unsafeDry.status === 0 && !unsafeDry.stdout.includes('Decisions required'), unsafeDry.stdout);
+  const refusedCarry = adopt(unsafeRepo, '--stack', 'nestjs-mysql', '--carry-allow', 'Bash(pnpm migration:run)', '--dry-run');
+  check('adopt: carrying an unsafe allow is refused', refusedCarry.stdout.includes('allow Bash(pnpm migration:run) cannot be carried: it overlaps the profile ask Bash(pnpm migration:run *)'), refusedCarry.stdout);
+  check('adopt --yes: refused carry writes nothing', adopt(unsafeRepo, '--stack', 'nestjs-mysql', '--carry-allow', 'Bash(pnpm migration:run)', '--yes').status === 3 && !existsSync(join(unsafeRepo, '.claude/project.json')));
+
+  // Per-rule decisions
+  const perRule = gitRepo(newRepo('existing-per-rule', { 'package.json': pkg(nestDeps), '.claude/settings.json': `${JSON.stringify({ permissions: { allow: ['Bash(make test *)', 'Bash(make lint *)', 'Bash(ls *)'] } })}\n`, '.github/CODEOWNERS': '* @org/team\n' }));
+  const pr = ['--stack', 'nestjs-mysql', '--carry-allow', 'Bash(make test *)', '--drop-allow', 'Bash(make lint *)'];
+  const prDry = adopt(perRule, ...pr, '--dry-run');
+  check('adopt: per-rule choices leave only the undecided rule, with a hint', /needs decision\s+Bash\(ls \*\)\s+— read-only/.test(prDry.stdout) && prDry.stdout.includes('allows what the profile does not: Bash(ls *) (read-only)') && !prDry.stdout.includes('allows what the profile does not: Bash(make'), prDry.stdout);
+  const prHashCarry = /Plan hash: ([0-9a-f]{16})/.exec(adopt(perRule, '--stack', 'nestjs-mysql', '--carry-allow', 'Bash(ls *)', '--drop-allow-rest', '--dry-run').stdout)[1];
+  const prHashDrop = /Plan hash: ([0-9a-f]{16})/.exec(adopt(perRule, '--stack', 'nestjs-mysql', '--drop-allow', 'Bash(ls *)', '--drop-allow-rest', '--dry-run').stdout)[1];
+  check('adopt: plan hash changes when allow decisions change', prHashCarry !== prHashDrop);
+  check('adopt --yes: a plan reviewed with other allow decisions is refused', adopt(perRule, '--stack', 'nestjs-mysql', '--drop-allow', 'Bash(ls *)', '--drop-allow-rest', '--plan', prHashCarry, '--yes').stderr.includes('the plan changed since it was reviewed'));
+  check('adopt: a rule both carried and dropped is an error', adopt(perRule, '--stack', 'nestjs-mysql', '--carry-allow', 'Bash(ls *)', '--drop-allow', 'Bash(ls *)', '--dry-run').status === 2);
+  check('adopt: naming a rule the settings do not have is a decision', adopt(perRule, ...pr, '--carry-allow', 'Bash(make tset *)', '--drop-allow-rest', '--dry-run').stdout.includes('has no allow rule Bash(make tset *) (named with --carry-allow)'));
+  const prYes = apply(perRule, ...pr, '--drop-allow-rest', '--repo-owner', '@org/team');
+  const prProject = JSON.parse(readFileSync(join(perRule, '.claude/project.json'), 'utf8'));
+  const prSettings = JSON.parse(readFileSync(join(perRule, '.claude/settings.json'), 'utf8'));
+  check('adopt: per-rule carry recorded in project.json, the rest dropped', prYes.status === 0 && same(prProject.permissions.allow, ['Bash(make test *)']) && prSettings.permissions.allow.includes('Bash(make test *)') && !prSettings.permissions.allow.includes('Bash(ls *)'), prYes.stdout + prYes.stderr);
 
   // Fallback: a settings file that cannot be parsed is never guessed at
   const broken = gitRepo(newRepo('existing-broken', { 'package.json': pkg(nestDeps), '.claude/settings.json': '{ not json\n', '.github/CODEOWNERS': '* @org/team\n' }));

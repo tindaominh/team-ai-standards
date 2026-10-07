@@ -33,7 +33,17 @@ const ask = [
     '<migration-generate-cmd>', '<migration-run-cmd>', '<migration-revert-cmd>',
     'docker', 'curl', 'wget', 'aws', 'gh'].map((c) => bash(`${c} *`)),
   'WebFetch',
-  'WebSearch'
+  'WebSearch',
+  // Long-running processes and commands that use real cloud credentials ask first:
+  // in the 0.5.0 pilot, dev servers and cdk diff/synth ran with the developer's AWS
+  // profile. No space before * so script variants (dev:api, cdk:diff) match too.
+  // Deploy and destroy variants are denied below; deny wins.
+  ...['npm run dev', 'npm run start', 'npm start', 'npm run serve', 'npm run watch',
+    'pnpm dev', 'pnpm run dev', 'pnpm start', 'pnpm run start', 'pnpm serve', 'pnpm run serve', 'pnpm watch', 'pnpm run watch',
+    'yarn dev', 'yarn run dev', 'yarn start', 'yarn run start', 'yarn serve', 'yarn watch',
+    'npm run cdk', 'pnpm cdk', 'pnpm run cdk', 'yarn cdk'].map((c) => bash(`${c}*`)),
+  ...['next dev', 'nest start', 'vite', 'cdk', 'terraform', 'sam', 'serverless', 'sls', 'pulumi', 'copilot', 'eb']
+    .map((c) => bash(`${c} *`))
 ];
 
 const secretPaths = [
@@ -100,6 +110,7 @@ const gitAlwaysDenied = ['git tag', 'git am', 'git apply', 'git init', 'git remo
   'git submodule', 'gh pr create', 'gh pr comment', 'gh pr edit', 'gh pr close', 'gh issue'];
 
 const profile = (extraAsk, extraDeny) => ({
+  $schema: 'https://json.schemastore.org/claude-code-settings.json',
   permissions: {
     allow,
     ask: [...ask, ...extraAsk],

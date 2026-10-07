@@ -26,7 +26,7 @@ const canonical = (v) => {
 const sameValue = (a, b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b ?? null));
 
 export function buildPlan(ctx) {
-  const { target, selection, profile, repoOwner, withDocs, commands, acknowledgedUnsupported, allowChoice, propose, previous } = ctx;
+  const { target, selection, profile, repoOwner, withDocs, commands, acknowledgedUnsupported, allowChoices, propose, previous } = ctx;
   const exists = (p) => existsSync(join(target, p));
   const read = (p) => readFileSync(join(target, p), 'utf8');
   const actions = [];
@@ -72,15 +72,15 @@ export function buildPlan(ctx) {
   } else {
     project = { ...config, hooks: false, commands, permissions: { allow: [], ask: [], deny: [] } };
     if (exists('.claude/settings.json')) {
-      merge = mergeSettings(read('.claude/settings.json'), composeSettings(base, project).settings, allowChoice);
+      merge = mergeSettings(read('.claude/settings.json'), composeSettings(base, project).settings, allowChoices);
       project.permissions = merge.extra;
-      for (const d of merge.decisions) decisions.push({ ...d, proposable: !d.what.startsWith('allows') });
+      for (const d of merge.decisions) decisions.push({ ...d, proposable: d.kind !== 'allow' });
     }
     actions.push({ path: '.claude/project.json', action: 'create', after: `${JSON.stringify(project, null, 2)}\n`, showDiff: true });
     if (!exists('.claude/rules/local/.gitkeep')) actions.push({ path: '.claude/rules/local/.gitkeep', action: 'create', after: '' });
   }
   const settings = composeSettings(base, project).text;
-  const unmergeable = merge && merge.decisions.some((d) => !d.what.startsWith('allows'));
+  const unmergeable = merge && merge.decisions.some((d) => d.kind !== 'allow');
   if (unmergeable) {
     if (propose) actions.push({ path: '.claude/settings.json.proposed', action: 'propose', after: settings, original: '.claude/settings.json', note: 'generated settings; your file was not changed' });
   } else change('.claude/settings.json', settings);

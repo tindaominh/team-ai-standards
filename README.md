@@ -45,8 +45,9 @@ Adoption is two commands with the same options. `--dry-run` writes nothing: it s
 | `--stack` | `nestjs-mysql \| nestjs-postgres \| node-postgres` | none | `.claude/project.json` → `stack` (expanded) | Shortcut that sets every stack dimension; the options above override it. |
 | `--with-docs` | — | off | `.claude/project.json` → `optionalGroups` | Also install the documentation checks (doc 09); updates keep them current. |
 | `--repo-owner` | `@user \| @org/team` | none (required when there is no `CODEOWNERS`) | `.claude/project.json` → `repoOwner`; `CODEOWNERS` standard block | Owner of the project files (`CLAUDE.md`, `.claude/project.json`, `.claude/rules/local/`). |
-| `--carry-allow` | — | off (decision required) | `.claude/project.json` → `permissions.allow` (the rules) | Keep `allow` rules from an existing `settings.json` that the profile does not grant. |
-| `--drop-allow` | — | off (decision required) | not stored (the rules are dropped) | Drop those `allow` rules instead. |
+| `--carry-allow` | `<rule>` | none (decision required) | `.claude/project.json` → `permissions.allow` | Keep this `allow` rule from an existing `settings.json` that the profile does not grant. Repeat for each rule. Rules that overlap a profile `ask` or `deny` are refused. |
+| `--drop-allow` | `<rule>` | none (decision required) | not stored (the rule is dropped) | Drop this `allow` rule instead. Repeat for each rule. |
+| `--drop-allow-rest` | — | off | not stored (the rules are dropped) | Drop every `allow` rule not named with `--carry-allow` or `--drop-allow`. |
 | `--propose-unresolved` | — | off | not stored | For files that cannot be merged, write `<file>.proposed` and a checklist instead of stopping. |
 | `--dry-run` | — | off | not stored | Show the plan, the value sources and the plan hash; write nothing. |
 | `--yes` | — | off | not stored | Apply the plan reviewed with `--dry-run`; stop if it changed. |
@@ -153,8 +154,9 @@ Script tự nhận diện stack từ `package.json` (framework, database, data a
 | `--stack` | `nestjs-mysql \| nestjs-postgres \| node-postgres` | không có | `.claude/project.json` → `stack` (đã khai triển) | Lối tắt đặt mọi chiều của stack; các option ở trên ghi đè lên nó. |
 | `--with-docs` | — | tắt | `.claude/project.json` → `optionalGroups` | Cài thêm các kiểm tra tài liệu (tài liệu 09); bản cập nhật giữ chúng mới. |
 | `--repo-owner` | `@user \| @org/team` | không có (bắt buộc khi chưa có `CODEOWNERS`) | `.claude/project.json` → `repoOwner`; khối standard trong `CODEOWNERS` | Owner của các file dự án (`CLAUDE.md`, `.claude/project.json`, `.claude/rules/local/`). |
-| `--carry-allow` | — | tắt (cần quyết định) | `.claude/project.json` → `permissions.allow` (các rule) | Giữ các rule `allow` trong `settings.json` đang có mà profile không cấp. |
-| `--drop-allow` | — | tắt (cần quyết định) | không lưu (các rule bị bỏ) | Bỏ các rule `allow` đó. |
+| `--carry-allow` | `<rule>` | không có (cần quyết định) | `.claude/project.json` → `permissions.allow` | Giữ rule `allow` này trong `settings.json` đang có mà profile không cấp. Lặp lại cho từng rule. Rule chồng lên `ask` hoặc `deny` của profile bị từ chối. |
+| `--drop-allow` | `<rule>` | không có (cần quyết định) | không lưu (rule bị bỏ) | Bỏ rule `allow` này. Lặp lại cho từng rule. |
+| `--drop-allow-rest` | — | tắt | không lưu (các rule bị bỏ) | Bỏ mọi rule `allow` không được nêu bằng `--carry-allow` hoặc `--drop-allow`. |
 | `--propose-unresolved` | — | tắt | không lưu | Với file không gộp được, ghi `<file>.proposed` và một checklist thay vì dừng. |
 | `--dry-run` | — | tắt | không lưu | In plan, nguồn của từng giá trị và plan hash; không ghi gì. |
 | `--yes` | — | tắt | không lưu | Áp dụng plan đã xem bằng `--dry-run`; dừng nếu plan đã thay đổi. |

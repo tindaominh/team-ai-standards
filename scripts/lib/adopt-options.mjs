@@ -78,18 +78,25 @@ export const OPTIONS = [
     vi: 'Owner của các file dự án (`CLAUDE.md`, `.claude/project.json`, `.claude/rules/local/`).'
   },
   {
-    name: 'carry-allow', value: null, kind: 'config',
-    default: { en: 'off (decision required)', vi: 'tắt (cần quyết định)' },
-    persisted: { en: `${PJ} → \`permissions.allow\` (the rules)`, vi: `${PJ} → \`permissions.allow\` (các rule)` },
-    en: 'Keep `allow` rules from an existing `settings.json` that the profile does not grant.',
-    vi: 'Giữ các rule `allow` trong `settings.json` đang có mà profile không cấp.'
+    name: 'carry-allow', value: () => '<rule>', repeat: true, split: false, kind: 'config',
+    default: { en: 'none (decision required)', vi: 'không có (cần quyết định)' },
+    persisted: { en: `${PJ} → \`permissions.allow\``, vi: `${PJ} → \`permissions.allow\`` },
+    en: 'Keep this `allow` rule from an existing `settings.json` that the profile does not grant. Repeat for each rule. Rules that overlap a profile `ask` or `deny` are refused.',
+    vi: 'Giữ rule `allow` này trong `settings.json` đang có mà profile không cấp. Lặp lại cho từng rule. Rule chồng lên `ask` hoặc `deny` của profile bị từ chối.'
   },
   {
-    name: 'drop-allow', value: null, kind: 'config',
-    default: { en: 'off (decision required)', vi: 'tắt (cần quyết định)' },
+    name: 'drop-allow', value: () => '<rule>', repeat: true, split: false, kind: 'config',
+    default: { en: 'none (decision required)', vi: 'không có (cần quyết định)' },
+    persisted: { en: 'not stored (the rule is dropped)', vi: 'không lưu (rule bị bỏ)' },
+    en: 'Drop this `allow` rule instead. Repeat for each rule.',
+    vi: 'Bỏ rule `allow` này. Lặp lại cho từng rule.'
+  },
+  {
+    name: 'drop-allow-rest', value: null, kind: 'config',
+    default: { en: 'off', vi: 'tắt' },
     persisted: { en: 'not stored (the rules are dropped)', vi: 'không lưu (các rule bị bỏ)' },
-    en: 'Drop those `allow` rules instead.',
-    vi: 'Bỏ các rule `allow` đó.'
+    en: 'Drop every `allow` rule not named with `--carry-allow` or `--drop-allow`.',
+    vi: 'Bỏ mọi rule `allow` không được nêu bằng `--carry-allow` hoặc `--drop-allow`.'
   },
   {
     name: 'propose-unresolved', value: null, kind: 'run',
@@ -157,7 +164,7 @@ export function parseArgs(argv) {
       continue;
     }
     i += 1;
-    if (o.repeat) opts[o.name] = [...(opts[o.name] || []), ...v.split(',').map((x) => x.trim()).filter(Boolean)];
+    if (o.repeat) opts[o.name] = [...(opts[o.name] || []), ...(o.split === false ? [v] : v.split(',').map((x) => x.trim()).filter(Boolean))];
     else opts[o.name] = v;
   }
   return { opts, errors };

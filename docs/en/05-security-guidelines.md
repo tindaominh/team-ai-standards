@@ -49,6 +49,7 @@ Both profiles deny:
 Both profiles ask before:
 
 - Installing or updating packages, `npx`, `docker`, `curl`, `wget`, any other `aws` or `gh` command, generating or running migrations, web fetch and web search.
+- Commands that start long-running processes or use real credentials: dev servers (`npm/pnpm/yarn dev*`, `start*`, `serve*`, `watch*`, `next dev`, `nest start`, `vite`) and infrastructure tools (`cdk`, `terraform`, `sam`, `serverless`/`sls`, `pulumi`, `copilot`, `eb`, and `cdk*` package scripts). `cdk diff` and `cdk synth` read the developer's real cloud account. The deploy and destroy forms stay denied.
 
 Both profiles allow without asking:
 
@@ -57,6 +58,7 @@ Both profiles allow without asking:
 
 Limits of permission rules (from the official Claude Code documentation, "Configure permissions"):
 
+- A trailing `*` with a space before it also matches the bare command: "`Bash(ls *)` matches `ls`, and `Bash(git log *)` matches `git log`. That holds only when the trailing `*` is the rule's only wildcard." So `Bash(pnpm test *)` also allows `pnpm test`, and an ask `Bash(pnpm migration:run *)` also asks for `pnpm migration:run`.
 - Bash rules match the command text Claude writes. The documentation states that such a rule "covers the invocation Claude usually produces and isn't a security boundary around the program". The same program called by its full path, inside `sh -c`, or from a script is not matched.
 - `Read` and `Edit` deny rules also cover file commands Claude Code recognises in Bash (`cat`, `head`, `tail`, `sed`, `tee`) and redirections. They do **not** cover commands that read files without naming them (for example `grep -r pattern .`) or scripts that open files themselves.
 - Deny rules in `permissions.deny` apply to the main conversation and to subagents.
