@@ -30,13 +30,14 @@ Hiện tại `common/marketplace-integration.md` luôn được load, vì phần
 | Mô tả của agent hoặc skill | 40 từ |
 | Số skill mỗi repository | 6 skill của team + tối đa 2 skill riêng của repository |
 
-Trong repository của bộ tiêu chuẩn, `npm run check:budget` đo bộ template và báo lỗi khi vượt một trong hai giới hạn; CI chạy lệnh này ở mọi thay đổi. Lệnh kiểm tra mọi tổ hợp hợp lệ của các stack fragment và giới hạn 150 từ của từng fragment. Bộ template 0.3.0 đo được khoảng 1.640 từ luôn được load; tổ hợp lớn nhất (Express + MySQL + PostgreSQL + TypeORM + AWS) khoảng 2.150 từ. Rule local trong `.claude/rules/local/` cộng thêm vào phần luôn được load; hãy giữ chúng ngắn. Rule chỉ chứa những câu ngắn, kiểm tra được; ví dụ code đặt trong skill, vì skill chỉ được load khi dùng tới. Trong repository dự án, đo bằng `wc -w CLAUDE.md .claude/rules/*/*.md` rồi nhân khoảng 1,3 để ra số token.
+Trong repository của bộ tiêu chuẩn, `npm run check:budget` đo bộ template và báo lỗi khi vượt một trong hai giới hạn; CI chạy lệnh này ở mọi thay đổi. Lệnh kiểm tra mọi tổ hợp hợp lệ của các stack fragment và giới hạn 150 từ của từng fragment. Bộ template 0.4.0 đo được khoảng 1.700 từ luôn được load; tổ hợp lớn nhất (Express + MySQL + PostgreSQL + TypeORM + AWS) khoảng 2.200 từ. Rule local trong `.claude/rules/local/` cộng thêm vào phần luôn được load; hãy giữ chúng ngắn. Rule chỉ chứa những câu ngắn, kiểm tra được; ví dụ code đặt trong skill, vì skill chỉ được load khi dùng tới. Trong repository dự án, đo bằng `wc -w CLAUDE.md .claude/rules/*/*.md` rồi nhân khoảng 1,3 để ra số token.
 
 ## Viết chỉ dẫn cho tốt
 
 - Mỗi dòng một chỉ dẫn, viết thành điều kiểm tra được ("mọi query lấy danh sách đều có giới hạn"), không viết thành mong muốn chung chung ("viết query hiệu quả").
 - Không lặp lại giữa CLAUDE.md, rule và skill. Nếu hai chỗ nói cùng một điều, xoá một chỗ.
 - Ưu tiên để máy ép: nếu ESLint, TypeScript, commitlint hoặc CI kiểm tra được, hãy cấu hình công cụ thay vì viết rule.
+- Tài liệu dùng lâu dài (CLAUDE.md, rule, skill, ADR, README) trích dẫn code bằng đường dẫn + tên symbol: đường dẫn file kèm tên hàm, class hoặc tên mục. Số dòng sẽ lệch dần. Chỉ plan và báo cáo review, vốn chỉ đọc một lần, mới được ghi `path:line`.
 - Xoá những rule team không còn cần. Rà soát ở mỗi lần release bộ tiêu chuẩn.
 
 ## Giữ session gọn gàng

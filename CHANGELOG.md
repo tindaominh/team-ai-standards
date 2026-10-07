@@ -4,6 +4,23 @@ All notable changes to this standard are recorded here. Versions follow `MAJOR.M
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-07
+
+Defect fixes before the pilot adopts the standard. Released as a minor version because doc 10 section 1 classes a new mandatory PR section as a MAJOR-level change (a minor release while the major version is 0) and a new rule as MINOR. Enhancements previously planned for 0.4.0 move to 0.5.0. No repository has adopted the standard yet.
+
+### Added
+
+- **Breaking:** PR template section "Regression guard (bug fixes)" and doc 04 section 11 "Regression guards" (English and Vietnamese): every bug fix names what now prevents the bug from coming back (a test, a CI step, a lint rule, a type or a constraint) or why none is possible; reviewers request changes when it is empty.
+- Rule `common/code-quality`: every CI check, regression test and permission deny rule has a short comment naming the failure it prevents, with the ticket key if any (for `.claude/project.json`, which cannot hold comments, the reason goes in the commit that adds the rule); a PR that removes or weakens such a guard answers that comment. Matching reviewer item in doc 04 section 11. Context budget: about 1,700 words always loaded and 2,200 for the largest combination (limit 2,300).
+
+### Changed
+
+- `docs-check.yml` and `std-check.yml` carry a header comment saying why they have no `paths:` filter: GitHub Docs ("Troubleshooting required status checks") state that a workflow skipped by path filtering leaves its required check Pending and blocks merging. Neither workflow had a filter, so their behaviour is unchanged.
+
+### Fixed
+
+- `templates/CLAUDE.md` asked for reference implementations as `path:line`; it now asks for path + symbol (file path plus function, class or section name), because line numbers drift in long-lived docs. Doc 07 (English and Vietnamese) states the rule: only plans and review reports may cite `path:line`. Agents and rules that produce plans and review reports keep `path:line`.
+
 ## [0.3.0] - 2026-10-07
 
 Adoption kit: one command plus about 30 minutes of project details. **Breaking** for any repository set up by hand from 0.2.0 templates: re-adopt with `scripts/adopt.mjs` (no repository uses the standard yet; the pilot has not started).

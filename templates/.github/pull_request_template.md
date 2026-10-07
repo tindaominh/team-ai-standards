@@ -44,6 +44,12 @@ Known gaps: <none | list>
 Security review: <not triggered | triggered by: area, result>
 Migration review: <no migration | attached>
 
+## Regression guard (bug fixes)
+
+<!-- Required for every bug fix. Reviewers block a bug-fix PR that leaves this empty. Delete only if the PR fixes no bug. -->
+
+What now prevents this bug from coming back: <a test (name/path), a CI step, a lint rule, a type, a constraint | none possible: reason>
+
 ## Checklist
 
 - [ ] No secrets, `.env*`, dumps or real customer data in the diff, tests or description.

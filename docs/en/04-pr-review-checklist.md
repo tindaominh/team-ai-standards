@@ -82,8 +82,14 @@ Use this checklist when reviewing any PR in which AI helped. The bar is the same
 - [ ] Refuted findings have a reason, not just "false positive".
 - [ ] The author's checklist box "I have read and understood every line" is ticked. If you suspect it is not true, ask questions about specific lines.
 
+## 11. Regression guards
+
+- [ ] For a bug fix, the "Regression guard" section of the PR names what now prevents the bug from coming back: a test, a CI step, a lint rule, a type or a constraint, or explains why none is possible.
+- [ ] The guard is real: the named test fails without the fix (see the test evidence), or the CI step, lint rule, type or constraint would have caught the original bug.
+- [ ] New CI checks, regression tests and permission deny rules carry a short comment naming the failure they prevent (with the ticket key if any). A PR that removes or weakens one of these guards answers that comment.
+
 ## Outcome
 
 - **Approve:** all applicable items pass.
-- **Request changes:** any item in sections 2–7 fails.
+- **Request changes:** any item in sections 2–7 fails, or a bug-fix PR has an empty or unconvincing regression guard, or the PR removes or weakens a guard without answering its comment (section 11).
 - **Comment:** questions only.

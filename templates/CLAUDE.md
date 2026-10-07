@@ -32,7 +32,7 @@ Local config: copy `config/env.example` to `.env`. Never read `.env`. Ask the de
 - TODO(adopt): request flow and where validation happens.
 - TODO(adopt): jobs and workers (SQS consumer, scheduler, separate ECS service).
 - TODO(adopt): channel adapter interface (`path/to/interface.ts`).
-- TODO(adopt): reference implementations to imitate (`path:line`).
+- TODO(adopt): reference implementations to imitate, as path + symbol (`src/orders/orders.service.ts` `OrdersService.create`), not line numbers.
 
 ## Hard rules for this repository
 
