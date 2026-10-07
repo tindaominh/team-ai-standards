@@ -30,7 +30,7 @@ Everything the AI loads into its context costs money and attention. A small, foc
 | Agent or skill description | 40 words |
 | Skills per repository | 6 from the team set + at most 2 repository-specific |
 
-In the standard repository, `npm run check:budget` measures the templates and fails if either limit is exceeded; CI runs it on every change. It checks every valid combination of stack fragments and each fragment's 150-word limit. The 0.4.0 templates measure about 1,700 words always loaded; the largest combination (Express + MySQL + PostgreSQL + TypeORM + AWS) is about 2,200 words. Local rules in `.claude/rules/local/` add to the always-loaded part; keep them short. Rules hold short, checkable statements; code examples belong in skills, which load only when used. In a project repository, measure with `wc -w CLAUDE.md .claude/rules/*/*.md` and multiply by about 1.3 for tokens.
+In the standard repository, `npm run check:budget` measures the templates and fails if either limit is exceeded; CI runs it on every change. It checks every valid combination of stack fragments and each fragment's 150-word limit. The 0.5.0 templates measure about 1,780 words always loaded, counting the `CLAUDE.md` blocks rendered with every command set; the largest combination (Express + MySQL + PostgreSQL + TypeORM + AWS) is about 2,290 words, close to the limit. Local rules in `.claude/rules/local/` add to the always-loaded part; keep them short. Rules hold short, checkable statements; code examples belong in skills, which load only when used. In a project repository, measure with `wc -w CLAUDE.md .claude/rules/*/*.md` and multiply by about 1.3 for tokens.
 
 ## Writing good instructions
 

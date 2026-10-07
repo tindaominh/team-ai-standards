@@ -115,6 +115,22 @@ try {
   const pkg = (deps, scripts = {}) => JSON.stringify({ name: 'svc', scripts, dependencies: Object.fromEntries(deps.map((d) => [d, '1.0.0'])) });
   const listFiles = (dir) => execFileSync('find', ['.', '-type', 'f', '-not', '-path', './.git/*'], { cwd: dir, encoding: 'utf8' }).split('\n').filter(Boolean).sort();
   const adopt = (dir, ...a) => run('node', [ADOPT, ...a], { cwd: dir });
+  // Review, then apply exactly the reviewed plan. A fresh repository needs the CODEOWNERS project owner.
+  const OWNER = ['--repo-owner', '@fixture-org/svc-team'];
+  const apply = (dir, ...a) => {
+    const flags = a.includes('--repo-owner') ? a : [...a, ...OWNER];
+    const dry = adopt(dir, ...flags, '--dry-run');
+    return dry.status === 0 ? adopt(dir, ...flags, '--yes') : dry;
+  };
+  const gitIn = (dir, ...a) => execFileSync('git', ['-c', 'user.name=smoke', '-c', 'user.email=smoke@example.com', '-c', 'commit.gpgsign=false', '-c', 'init.defaultBranch=main', ...a], { cwd: dir, encoding: 'utf8' });
+  const gitRepo = (dir, branch = 'chore/adopt') => {
+    gitIn(dir, 'init', '-q');
+    gitIn(dir, 'add', '-A');
+    gitIn(dir, 'commit', '-q', '-m', 'base');
+    if (branch) gitIn(dir, 'switch', '-q', '-c', branch);
+    return dir;
+  };
+  const withoutBlocks = (text) => text.replace(/<!-- std:begin ([a-z-]+) -->[\s\S]*?<!-- std:end \1 -->\n\n?/g, '');
   const compose = (dir, ...a) => run('node', ['.claude/std/compose-settings.mjs', ...a], { cwd: dir });
   const sha = (dir, p) => createHash('sha256').update(readFileSync(join(dir, p))).digest('hex');
   const stackOf = (dir) => JSON.parse(readFileSync(join(dir, '.claude/project.json'), 'utf8')).stack;
@@ -131,12 +147,18 @@ try {
   const det = newRepo('detect-nest', { 'package.json': pkg(nestDeps, nestScripts), 'package-lock.json': '{}' });
   const dryBefore = listFiles(det);
   const dry = adopt(det, '--dry-run');
-  check('adopt --dry-run: shows the detected selection', dry.status === 0 && /framework\s+nestjs\s+detected/.test(dry.stdout) && dry.stdout.includes('Plan:'), dry.stdout + dry.stderr);
+  check('adopt --dry-run: shows the detected selection and a plan hash', dry.status === 0 && /framework\s+nestjs\s+detected/.test(dry.stdout) && dry.stdout.includes('Plan:') && /Plan hash: [0-9a-f]{16}/.test(dry.stdout), dry.stdout + dry.stderr);
   check('adopt --dry-run: writes nothing', same(listFiles(det), dryBefore));
+  check('adopt --dry-run: missing --repo-owner is a required decision', dry.stdout.includes('Decisions required') && dry.stdout.includes('--repo-owner'));
+  const ownerMissing = adopt(det, '--yes');
+  check('adopt --yes: stops while --repo-owner is missing', ownerMissing.status === 3 && ownerMissing.stderr.includes('decision(s) required'), ownerMissing.stderr);
+  check('adopt --yes: refusal writes nothing', same(listFiles(det), dryBefore));
   const noConfirm = adopt(det);
-  check('adopt: detected selection needs --yes or flags', noConfirm.status === 3 && noConfirm.stderr.includes('--yes') && noConfirm.stderr.includes('--framework nestjs'), noConfirm.stderr);
+  check('adopt: a real run needs --dry-run then --yes', noConfirm.status === 3 && noConfirm.stderr.includes('--dry-run') && noConfirm.stderr.includes('--framework nestjs'), noConfirm.stderr);
   check('adopt: unconfirmed run writes nothing', same(listFiles(det), dryBefore));
-  const yes = adopt(det, '--yes', '--profile', 'standard');
+  const noPlan = adopt(newRepo('no-plan', { 'package.json': pkg(nestDeps) }), ...OWNER, '--yes');
+  check('adopt --yes: refuses without a reviewed plan', noPlan.status === 3 && noPlan.stderr.includes('no reviewed plan'), noPlan.stderr);
+  const yes = apply(det, '--profile', 'standard');
   check('adopt --yes: runs', yes.status === 0, yes.stderr);
   check('adopt: project.json stores the selection', same(stackOf(det), { runtime: 'node', framework: 'nestjs', databases: ['mysql'], dataAccess: 'typeorm', optional: [] }));
 
@@ -152,7 +174,7 @@ try {
   ];
   cases.forEach(([label, files, expected], i) => {
     const dir = newRepo(`detect-${i}`, files);
-    const r = adopt(dir, '--yes');
+    const r = apply(dir);
     check(`detect ${label}: runs`, r.status === 0, r.stderr);
     check(`detect ${label}: selection`, r.status === 0 && same(stackOf(dir), { runtime: 'node', ...expected }), r.status === 0 ? JSON.stringify(stackOf(dir)) : '');
     if (label === 'two databases') check('detect two databases: warns', r.stdout.includes('more than one database'));
@@ -182,7 +204,7 @@ try {
     check(`unsupported ${label}: writes nothing`, listFiles(dir).length === 1);
   });
   const ack = newRepo('unsupported-ack', { 'package.json': pkg(['fixture-web-framework', 'pg', 'typeorm']) });
-  const ackRun = adopt(ack, '--framework', 'none', '--yes');
+  const ackRun = apply(ack, '--framework', 'none');
   check('unsupported: explicit flag lets adoption continue', ackRun.status === 0 && stackOf(ack).framework === 'none', ackRun.stderr);
   check('unsupported: explicit override recorded as acknowledged', same(JSON.parse(readFileSync(join(ack, '.claude/project.json'), 'utf8')).acknowledgedUnsupported, ['fixture-web-framework']));
   check('unsupported: std-check does not warn for an acknowledged dependency', !compose(ack, '--check').stdout.includes('depends on fixture-web-framework'));
@@ -201,8 +223,8 @@ try {
   check('alias node-postgres: documented meaning (framework none + PostgreSQL + TypeORM + AWS)', same(fixtureRegistry.aliases['node-postgres'], { framework: 'none', databases: ['postgres'], dataAccess: 'typeorm', optional: ['aws'] }));
   for (const [alias, expected] of Object.entries(fixtureRegistry.aliases)) {
     const dir = newRepo(`alias-${alias}`);
-    const r = adopt(dir, '--stack', alias);
-    check(`alias ${alias}: runs without --yes`, r.status === 0, r.stderr);
+    const r = apply(dir, '--stack', alias);
+    check(`alias ${alias}: applies`, r.status === 0, r.stderr);
     check(`alias ${alias}: expands to the selection`, same(stackOf(dir), { runtime: 'node', ...expected }));
     const frag = (n) => existsSync(join(dir, `.claude/rules/std/fragments/${n}.md`));
     const hasRule = (dim, value) => !existsSync(join(STD, 'templates/fragments', fixtureRegistry.dimensions[dim].folder, value, 'rule.md')) || frag(`${fixtureRegistry.dimensions[dim].folder}-${value}`);
@@ -226,21 +248,93 @@ try {
     check(`invalid ${label}: writes nothing`, listFiles(dir).length === 0);
   });
 
-  // 2g. existing CLAUDE.md, settings, PR template and CODEOWNERS are never overwritten
-  const existing = { 'CLAUDE.md': '# Mine\n', '.claude/settings.json': '{"permissions":{"deny":["Bash(rm *)"]}}\n', '.github/pull_request_template.md': '## Mine\n', '.github/CODEOWNERS': '* @org/team\n' };
-  const old = newRepo('existing', existing);
-  const o1 = adopt(old, '--stack', 'nestjs-mysql');
-  check('adopt existing repo: runs', o1.status === 0, o1.stderr);
-  for (const [p, c] of Object.entries(existing)) {
-    check(`adopt existing repo: ${p} unchanged`, readFileSync(join(old, p), 'utf8') === c);
-    check(`adopt existing repo: ${p}.proposed written`, existsSync(join(old, `${p}.proposed`)));
-  }
-  check('adopt existing repo: merge checklist written', existsSync(join(old, '.claude/std-adoption-checklist.md')));
-  const coProposed = readFileSync(join(old, '.github/CODEOWNERS.proposed'), 'utf8');
-  // Expected block: read now from the template this adoption used (equal to the live
-  // templates/.github/CODEOWNERS whenever that file names a real owner).
+  // 2g. existing files are merged, never overwritten: CLAUDE.md gets std blocks,
+  //     settings.json is regenerated with the repository's stricter rules moved
+  //     into project.json, the PR template and CODEOWNERS get an appended block.
+  const claudeOriginal = '# Mine\n\nWhat this service does.\n\n## Commands\n\nRun `make test`.\n\n## Architecture\n\nAdapters in src/channels.\n';
+  const existing = {
+    'package.json': pkg(nestDeps, nestScripts),
+    'CLAUDE.md': claudeOriginal,
+    '.claude/settings.json': `${JSON.stringify({ permissions: { allow: ['Bash(git push *)', 'Bash(make test *)'], ask: ['Bash(docker *)'], deny: ['Bash(rm -rf *)'] } })}\n`,
+    '.github/pull_request_template.md': '## Mine\n\n## Checklist\n\n- [ ] Our own item\n',
+    '.github/CODEOWNERS': '* @org/team\n'
+  };
+  const old = gitRepo(newRepo('existing', existing));
+  const oFlags = ['--stack', 'nestjs-mysql', '--carry-allow'];
+  const oDry = adopt(old, ...oFlags, '--dry-run');
+  check('adopt existing repo: dry run passes', oDry.status === 0, oDry.stderr);
+  check('adopt existing repo: dry run prints a unified diff of CLAUDE.md', oDry.stdout.includes('--- a/CLAUDE.md') && oDry.stdout.includes('+<!-- std:begin commands -->'));
+  check('adopt existing repo: dry run prints the settings.json diff and project.json', oDry.stdout.includes('--- a/.claude/settings.json') && oDry.stdout.includes('+++ b/.claude/project.json'));
+  check('adopt existing repo: dry run deletes no CLAUDE.md line', !/^-(?!--)/m.test(oDry.stdout.split('--- a/CLAUDE.md')[1].split('\n--- ')[0]));
+  check('adopt existing repo: duplicate "Commands" section reported, not removed', oDry.stdout.includes('"## Commands" may repeat the std "commands" block'));
+  check('adopt existing repo: project deny carried over', /carried\s+deny\s+Bash\(rm -rf \*\)/.test(oDry.stdout));
+  check('adopt existing repo: allow conflicting with a profile deny dropped and reported', /dropped\s+allow\s+Bash\(git push \*\)\s+\(conflicts with the profile deny/.test(oDry.stdout));
+  check('adopt existing repo: no CODEOWNERS owner needed for an existing file', !oDry.stdout.includes('Decisions required'));
+  const oHash = /Plan hash: ([0-9a-f]{16})/.exec(oDry.stdout)[1];
+
+  writeFileSync(join(old, 'CLAUDE.md'), `${claudeOriginal}\nEdited after the review.\n`);
+  gitIn(old, 'commit', '-q', '-am', 'edit after review');
+  const mismatch = adopt(old, ...oFlags, '--yes');
+  check('adopt --yes: plan hash mismatch after editing CLAUDE.md stops', mismatch.status === 3 && mismatch.stderr.includes('the plan changed since it was reviewed') && mismatch.stderr.includes('--dry-run'), mismatch.stderr);
+  check('adopt --yes: mismatch writes nothing', !existsSync(join(old, '.claude/project.json')));
+  gitIn(old, 'reset', '-q', '--hard', 'HEAD~1');
+  check('adopt --plan: a hash other than the current plan is refused', adopt(old, ...oFlags, '--plan', 'ffffffffffffffff', '--yes').stderr.includes('reviewed ffffffffffffffff'));
+
+  writeFileSync(join(old, 'scratch.txt'), 'uncommitted\n');
+  const dirty = adopt(old, ...oFlags, '--plan', oHash, '--yes');
+  check('adopt --yes: dirty working tree refused with the commands to fix it', dirty.status === 3 && dirty.stdout.includes('working tree is not clean') && dirty.stdout.includes('git stash push -u'), dirty.stdout + dirty.stderr);
+  rmSync(join(old, 'scratch.txt'));
+  gitIn(old, 'switch', '-q', 'main');
+  const onMain = adopt(old, ...oFlags, '--plan', oHash, '--yes');
+  check('adopt --yes: default branch refused with the command to fix it', onMain.status === 3 && onMain.stdout.includes('is the default branch') && onMain.stdout.includes('git switch -c chore/adopt-ai-standard'), onMain.stdout + onMain.stderr);
+  check('adopt --yes: git refusals write nothing', !existsSync(join(old, '.claude/project.json')));
+  gitIn(old, 'switch', '-q', 'chore/adopt');
+
+  const oYes = adopt(old, ...oFlags, '--plan', oHash, '--yes');
+  check('adopt existing repo: --yes applies the reviewed plan', oYes.status === 0, oYes.stdout + oYes.stderr);
+  const claudeAfter = readFileSync(join(old, 'CLAUDE.md'), 'utf8');
+  check('adopt existing repo: CLAUDE.md keeps every original line', withoutBlocks(claudeAfter) === claudeOriginal, claudeAfter);
+  check('adopt existing repo: std blocks inserted after the intro', claudeAfter.indexOf('<!-- std:begin standard -->') > claudeAfter.indexOf('What this service does.') && claudeAfter.indexOf('<!-- std:end commands -->') < claudeAfter.indexOf('## Commands\n\nRun'));
+  const oProject = JSON.parse(readFileSync(join(old, '.claude/project.json'), 'utf8'));
+  const oSettings = JSON.parse(readFileSync(join(old, '.claude/settings.json'), 'utf8'));
+  check('adopt existing repo: project deny moved to project.json and kept in settings', same(oProject.permissions.deny, ['Bash(rm -rf *)']) && oSettings.permissions.deny.includes('Bash(rm -rf *)'));
+  check('adopt existing repo: confirmed allow carried, conflicting allow dropped', same(oProject.permissions.allow, ['Bash(make test *)']) && !oSettings.permissions.allow.includes('Bash(git push *)'));
+  const prAfter = readFileSync(join(old, '.github/pull_request_template.md'), 'utf8');
+  check('adopt existing repo: PR template keeps its text and gets the standard block', prAfter.startsWith(existing['.github/pull_request_template.md']) && prAfter.includes('<!-- std:begin pr-template -->'));
   const expectedBlock = blockOf(readFileSync(join(STD, 'templates/.github/CODEOWNERS'), 'utf8'));
-  check('adopt existing repo: CODEOWNERS proposal keeps original and appends the current block', coProposed.startsWith('* @org/team') && expectedBlock.length > 0 && coProposed.trimEnd().endsWith(expectedBlock));
+  const coAfter = readFileSync(join(old, '.github/CODEOWNERS'), 'utf8');
+  check('adopt existing repo: CODEOWNERS keeps its text and appends the current block', coAfter.startsWith('* @org/team\n') && expectedBlock.length > 0 && coAfter.trimEnd().endsWith(expectedBlock));
+  check('adopt existing repo: no *.proposed files or checklist', !listFiles(old).some((f) => f.endsWith('.proposed') || f.endsWith('std-adoption-checklist.md')));
+  check('adopt existing repo: std-check passes', compose(old, '--check').status === 0, compose(old, '--check').stderr);
+  gitIn(old, 'add', '-A');
+  gitIn(old, 'commit', '-q', '-m', 'adopt');
+  const twice = adopt(old, ...oFlags, '--plan', oHash, '--yes');
+  check('adopt: second --yes changes nothing', twice.status === 0 && twice.stdout.includes('Nothing to do') && gitIn(old, 'status', '--porcelain') === '');
+  check('adopt: --dry-run after --yes reports nothing to do', adopt(old, ...oFlags, '--dry-run').stdout.includes('Nothing to do'));
+
+  // A later update touches only the std blocks of merged files
+  const prPath = join(old, '.github/pull_request_template.md');
+  const prAdopted = readFileSync(prPath, 'utf8');
+  writeFileSync(prPath, `${prAdopted.replace('## Test evidence', '## Test evidence (older release)')}\nTeam note after the block.\n`);
+  const claudeBeforeSync = readFileSync(join(old, 'CLAUDE.md'), 'utf8');
+  const oSync = run('node', [SYNC, '--target', old]);
+  check('sync after merge: PR template block refreshed, text outside it kept', oSync.status === 0 && readFileSync(prPath, 'utf8') === `${prAdopted}\nTeam note after the block.\n`, oSync.stdout + oSync.stderr);
+  check('sync after merge: CLAUDE.md unchanged when its blocks are current', readFileSync(join(old, 'CLAUDE.md'), 'utf8') === claudeBeforeSync);
+  check('sync after merge: std-check passes', compose(old, '--check').status === 0);
+
+  // An allow rule the profile does not grant needs a human decision
+  const allowRepo = gitRepo(newRepo('existing-allow', { 'package.json': pkg(nestDeps), '.claude/settings.json': '{"permissions":{"allow":["Bash(make *)"]}}\n', '.github/CODEOWNERS': '* @org/team\n' }));
+  const allowDry = adopt(allowRepo, '--stack', 'nestjs-mysql', '--dry-run');
+  check('adopt: existing allow not in the profile is a required decision', allowDry.stdout.includes('allows what the profile does not: Bash(make *)') && allowDry.stdout.includes('--carry-allow'));
+  check('adopt --yes: refuses until the allow decision is made', adopt(allowRepo, '--stack', 'nestjs-mysql', '--yes').status === 3 && !existsSync(join(allowRepo, '.claude/project.json')));
+
+  // Fallback: a settings file that cannot be parsed is never guessed at
+  const broken = gitRepo(newRepo('existing-broken', { 'package.json': pkg(nestDeps), '.claude/settings.json': '{ not json\n', '.github/CODEOWNERS': '* @org/team\n' }));
+  const brokenDry = adopt(broken, '--stack', 'nestjs-mysql', '--dry-run');
+  check('adopt: unparseable settings.json is a required decision', brokenDry.stdout.includes('.claude/settings.json cannot be parsed'));
+  check('adopt --yes: refuses with an unparseable settings.json', adopt(broken, '--stack', 'nestjs-mysql', '--yes').status === 3);
+  const fb = apply(broken, '--stack', 'nestjs-mysql', '--propose-unresolved', '--repo-owner', '@org/team');
+  check('adopt --propose-unresolved: writes settings.json.proposed and the checklist only then', fb.status === 0 && existsSync(join(broken, '.claude/settings.json.proposed')) && existsSync(join(broken, '.claude/std-adoption-checklist.md')) && readFileSync(join(broken, '.claude/settings.json'), 'utf8') === '{ not json\n', fb.stdout + fb.stderr);
 
   // 2h. compose: settings, command table, edits, chained commands, hooks
   const app = det;
@@ -248,7 +342,7 @@ try {
   check('compose: placeholders replaced with project commands', appSettings.permissions.allow.includes('Bash(npm run build *)'));
   check('compose: rules for unset commands left out', !JSON.stringify(appSettings).includes('<typecheck-cmd>'));
   check('compose: standard profile lets git commit ask', appSettings.permissions.ask.includes('Bash(git commit *)'));
-  check('adopt: CLAUDE.md command table generated', readFileSync(join(app, 'CLAUDE.md'), 'utf8').includes('| `<build-cmd>` | Build | `npm run build` |'));
+  check('adopt: CLAUDE.md command list generated', readFileSync(join(app, 'CLAUDE.md'), 'utf8').includes('- `<build-cmd>`: `npm run build`'));
   check('adopt: no unfilled template variables', !listFiles(app).some((f) => /\{\{[A-Z_]+\}\}/.test(readFileSync(join(app, f), 'utf8'))));
   const rule = join(app, '.claude/rules/std/common/git.md');
   const original = readFileSync(rule, 'utf8');
@@ -295,25 +389,27 @@ try {
   changed.stack = { runtime: 'node', framework: 'nestjs', databases: ['postgres'], dataAccess: 'raw', optional: ['aws'] };
   writeFileSync(projPath, `${JSON.stringify(changed, null, 2)}\n`);
   check('compose --check: warns when the selection differs from installed fragments', compose(app, '--check').stdout.includes('differs from the installed fragments'));
-  const layer23 = ['CLAUDE.md', '.claude/project.json', '.claude/rules/local/billing.md', '.claude/settings.local.json'];
+  const claudeOutside = withoutBlocks(readFileSync(join(app, 'CLAUDE.md'), 'utf8'));
+  const layer23 = ['.claude/project.json', '.claude/rules/local/billing.md', '.claude/settings.local.json'];
   const before23 = layer23.map((p) => sha(app, p));
   const s1 = run('node', [SYNC, '--target', app]);
   check('sync: runs', s1.status === 0, s1.stderr);
   check('sync: Layer 2 and 3 files unchanged byte for byte', same(layer23.map((p) => sha(app, p)), before23));
+  check('sync: CLAUDE.md text outside std blocks unchanged byte for byte', withoutBlocks(readFileSync(join(app, 'CLAUDE.md'), 'utf8')) === claudeOutside);
+  check('sync: CLAUDE.md std block follows the new selection', readFileSync(join(app, 'CLAUDE.md'), 'utf8').includes('Stack `nestjs + postgres + raw + aws`'));
   check('sync: tampered standard file restored', readFileSync(join(app, '.claude/rules/std/common/git.md'), 'utf8') === original);
   const fragmentFile = (n) => existsSync(join(app, `.claude/rules/std/fragments/${n}.md`));
   check('sync: newly selected fragments added', fragmentFile('database-postgres') && fragmentFile('data-access-raw') && fragmentFile('optional-aws') && existsSync(join(app, '.claude/skills/std-db-migration-review/data-access-raw.md')));
   check('sync: deselected fragments removed', !fragmentFile('database-mysql') && !fragmentFile('data-access-typeorm') && !existsSync(join(app, '.claude/skills/std-tdd-workflow/data-access-typeorm.md')));
   check('sync: version written', readFileSync(join(app, '.claude/STANDARD_VERSION'), 'utf8').trim() === readFileSync(join(T, '.claude/STANDARD_VERSION'), 'utf8').trim());
   check('sync: summary reports the version change', s1.stdout.includes('0.0.1 →'));
-  check('sync: no table action when the format is unchanged', !s1.stdout.includes('Action required'));
   // Reordering keys in project.json never triggers the mismatch warning
   const reordered = { ...JSON.parse(readFileSync(projPath, 'utf8')) };
   reordered.stack = { optional: ['aws'], dataAccess: 'raw', databases: ['postgres'], framework: 'nestjs', runtime: 'node' };
   writeFileSync(projPath, `${JSON.stringify({ permissions: reordered.permissions, commands: reordered.commands, hooks: reordered.hooks, profile: reordered.profile, stack: reordered.stack }, null, 2)}\n`);
   check('compose --check: reordered keys give no mismatch warning', !compose(app, '--check').stdout.includes('differs from the installed fragments'));
   const two = newRepo('two-dbs');
-  adopt(two, '--framework', 'express', '--db', 'mysql,postgres', '--data-access', 'raw', '--with', 'aws');
+  apply(two, '--framework', 'express', '--db', 'mysql,postgres', '--data-access', 'raw', '--with', 'aws');
   const twoProj = join(two, '.claude/project.json');
   const twoText = JSON.parse(readFileSync(twoProj, 'utf8'));
   twoText.stack = { optional: ['aws'], databases: ['postgres', 'mysql'], runtime: 'node', dataAccess: 'raw', framework: 'express' };
@@ -321,13 +417,13 @@ try {
   check('compose --check: reordered arrays give no mismatch warning', !compose(two, '--check').stdout.includes('differs from the installed fragments'));
   const s2 = run('node', [SYNC, '--target', app]);
   check('sync: second run changes nothing', s2.stdout.includes('### Files updated\n\n- none'));
-  // A release that changes the command table format: simulate an old-format table in CLAUDE.md
+  // A release that changes the std blocks: simulate an older block in CLAUDE.md
   const claudeText = readFileSync(join(app, 'CLAUDE.md'), 'utf8');
-  writeFileSync(join(app, 'CLAUDE.md'), claudeText.replace('| Placeholder | Purpose | Command |', '| Placeholder | Command (old format) |'));
-  const claudeSha = sha(app, 'CLAUDE.md');
+  writeFileSync(join(app, 'CLAUDE.md'), claudeText.replace('Skills use these placeholders.', 'Old wording.'));
+  check('std-check: a stale std block fails', compose(app, '--check').stderr.includes('std blocks are stale'));
   const s3 = run('node', [SYNC, '--target', app]);
-  check('sync: table format change gives the exact command', s3.stdout.includes('Action required: regenerate the command table') && s3.stdout.includes('node .claude/std/compose-settings.mjs') && s3.stdout.includes('MAJOR'), s3.stdout);
-  check('sync: CLAUDE.md still untouched', sha(app, 'CLAUDE.md') === claudeSha);
+  check('sync: refreshes only the std blocks in CLAUDE.md', s3.status === 0 && readFileSync(join(app, 'CLAUDE.md'), 'utf8') === claudeText && s3.stdout.includes('`CLAUDE.md` (std blocks only)'), s3.stdout + s3.stderr);
+  check('sync: std-check passes after the update', compose(app, '--check').status === 0);
   check('sync: non-adopted repository is refused', run('node', [SYNC, '--target', newRepo('not-adopted')]).status === 1);
   const syncRefused = run('node', [join(STD_PLACEHOLDER, 'scripts/sync-standard.mjs'), '--target', app]);
   check('sync: refuses while the CODEOWNERS block has placeholder owners', syncRefused.status === 2 && syncRefused.stderr.includes('placeholder owners'), syncRefused.stderr);
@@ -338,7 +434,8 @@ try {
     skip('real standard: adopt and sync succeed with a real CODEOWNERS owner', 'templates/.github/CODEOWNERS still has placeholder owners');
   } else {
     const live = newRepo('live-standard');
-    const liveAdopt = run('node', [join(ROOT, 'scripts/adopt.mjs'), '--stack', 'nestjs-mysql'], { cwd: live });
+    run('node', [join(ROOT, 'scripts/adopt.mjs'), '--stack', 'nestjs-mysql', ...OWNER, '--dry-run'], { cwd: live });
+    const liveAdopt = run('node', [join(ROOT, 'scripts/adopt.mjs'), '--stack', 'nestjs-mysql', ...OWNER, '--yes'], { cwd: live });
     const liveSync = run('node', [join(ROOT, 'scripts/sync-standard.mjs'), '--target', live]);
     const liveCo = readFileSync(join(live, '.github/CODEOWNERS'), 'utf8');
     check('real standard: adopt and sync succeed with a real CODEOWNERS owner', liveAdopt.status === 0 && liveSync.status === 0 && blockOf(liveCo) === liveBlock, liveAdopt.stderr + liveSync.stderr);

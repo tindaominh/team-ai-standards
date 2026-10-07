@@ -4,6 +4,29 @@ All notable changes to this standard are recorded here. Versions follow `MAJOR.M
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-07
+
+Adoption becomes two commands with no manual merging in the normal case: `adopt.mjs --dry-run` to review, `adopt.mjs --yes` to apply exactly what was reviewed. Released as a minor version under doc 10 section 1: developers run adoption differently and the `CLAUDE.md` markers change (MAJOR-level changes, which go into a minor release while the major version is 0). No repository has adopted the standard yet.
+
+### Changed
+
+- **Breaking:** `scripts/adopt.mjs` merges existing files instead of writing `*.proposed` files. `--dry-run` prints every file to create, unified diffs of every file to change (`CLAUDE.md`, `.claude/settings.json`, PR template, `CODEOWNERS`), the new `.claude/project.json`, carried-over and dropped permission rules with reasons, optional cleanup suggestions, "Decisions required" with the flag for each, and a plan hash over the standard version, flags, existing files and result. `--yes` recomputes the hash and stops if it differs from the reviewed plan (`--plan <hash>` to require a specific one). A real run without `--yes` no longer applies explicit flags directly.
+- **Breaking:** before modifying an existing file, `--yes` requires a git repository with a clean working tree on a branch other than the default branch, and prints the exact git commands otherwise.
+- **Breaking:** `CLAUDE.md` holds two blocks owned by the standard, `<!-- std:begin standard -->` and `<!-- std:begin commands -->` (with matching `std:end` markers), generated from `.claude/project.json` by the new shared module `.claude/std/compose.mjs`. They replace the `std-commands` markers, and the command table becomes a shorter list. For an existing `CLAUDE.md`, adoption inserts the blocks after the first H1 and its introduction, keeps every line, and reports headings that may repeat a block without removing them.
+- An existing `.claude/settings.json` is regenerated from the profile: its own `deny` and `ask` rules move into `.claude/project.json`; `allow` or `ask` rules covered by a profile `deny`, and `allow` rules covered by a profile `ask`, are dropped and reported; other `allow` rules need `--carry-allow` or `--drop-allow` (permissions are never loosened automatically); unparseable files or unknown keys stop adoption.
+- An existing PR template or `CODEOWNERS` gets the standard block appended directly. A new `CODEOWNERS` needs `--repo-owner <@user|@org/team>`.
+- `*.proposed` files and `.claude/std-adoption-checklist.md` are written only with `--propose-unresolved`, for files that cannot be merged. Running `--yes` again, or `--dry-run` after it, reports "Nothing to do".
+- `scripts/sync-standard.mjs` replaces the inside of the `std:` blocks in `CLAUDE.md` and of an appended PR-template block; text outside them stays byte for byte. The "Action required: regenerate the command table" step of update PRs is no longer needed and is removed.
+- Docs 00 and 10, README and the Vietnamese file guide (English and Vietnamese) describe the two-command flow, what is automatic, what stops for a decision, the `std:` blocks and how to undo with git.
+
+### Fixed
+
+- `npm run check:budget` counted `templates/CLAUDE.md` with an empty command table, so the always-loaded figure was about 150 words too low. It now renders the `std:` blocks with every command set: about 1,780 words always loaded and 2,290 for the largest combination (limit 2,300).
+
+### Added
+
+- Smoke tests for the new adoption flow: fresh repository and missing `--repo-owner`; existing `CLAUDE.md` with a duplicate "Commands" section; existing settings with a project deny (carried over), a conflicting allow (dropped and reported), an allow needing a decision, and an unparseable file (fallback proposals); plan hash mismatch after editing `CLAUDE.md`; dirty working tree and default-branch refusals; idempotency; sync touching only `std:` blocks.
+
 ## [0.4.0] - 2026-10-07
 
 Defect fixes before the pilot adopts the standard. Released as a minor version because doc 10 section 1 classes a new mandatory PR section as a MAJOR-level change (a minor release while the major version is 0) and a new rule as MINOR. Enhancements previously planned for 0.4.0 move to 0.5.0. No repository has adopted the standard yet.

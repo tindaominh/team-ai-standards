@@ -26,7 +26,7 @@ node ../team-ai-standards/scripts/adopt.mjs --profile strict --dry-run
 node ../team-ai-standards/scripts/adopt.mjs --profile strict --yes
 ```
 
-The script detects the stack from `package.json` (framework, databases, data access, AWS) and shows it; confirm with `--yes` or pass `--framework`, `--db`, `--data-access`, `--with` (or a shortcut such as `--stack nestjs-mysql`). Profiles: `strict` (client repositories, default) or `standard` (internal only). The script never overwrites existing files; it writes `*.proposed` files and a merge checklist instead. Then follow the printed checklist (details in the quickstart).
+The script detects the stack from `package.json` (framework, databases, data access, AWS) and shows it; correct it with `--framework`, `--db`, `--data-access`, `--with` (or a shortcut such as `--stack nestjs-mysql`). Profiles: `strict` (client repositories, default) or `standard` (internal only). `--dry-run` writes nothing and prints every change, with diffs and a plan hash; `--yes` applies exactly that plan, on a clean branch. Existing files are merged, not overwritten: `CLAUDE.md` gets `std:` blocks, the PR template and `CODEOWNERS` get a block at the end, and stricter rules from an existing `settings.json` move into `.claude/project.json`. Anything that needs a person (for example `--repo-owner`) is listed under "Decisions required" (details in the quickstart).
 
 ### Three layers in a project repository
 
@@ -91,7 +91,7 @@ node ../team-ai-standards/scripts/adopt.mjs --profile strict --dry-run
 node ../team-ai-standards/scripts/adopt.mjs --profile strict --yes
 ```
 
-Script tự nhận diện stack từ `package.json` (framework, database, data access, AWS) và in ra; xác nhận bằng `--yes` hoặc truyền `--framework`, `--db`, `--data-access`, `--with` (hoặc lối tắt như `--stack nestjs-mysql`). Profile: `strict` (repo khách hàng, mặc định) hoặc `standard` (chỉ repo nội bộ). Script không bao giờ ghi đè file đã có; thay vào đó nó tạo file `*.proposed` và một checklist để gộp. Sau đó làm theo checklist được in ra (chi tiết trong tài liệu bắt đầu nhanh).
+Script tự nhận diện stack từ `package.json` (framework, database, data access, AWS) và in ra; sửa lại bằng `--framework`, `--db`, `--data-access`, `--with` (hoặc lối tắt như `--stack nestjs-mysql`). Profile: `strict` (repo khách hàng, mặc định) hoặc `standard` (chỉ repo nội bộ). `--dry-run` không ghi gì và in ra mọi thay đổi, kèm diff và plan hash; `--yes` áp dụng đúng plan đó, trên một branch sạch. File đã có được gộp chứ không bị ghi đè: `CLAUDE.md` có thêm các khối `std:`, PR template và `CODEOWNERS` có thêm một khối ở cuối, các rule chặt hơn trong `settings.json` đang có được chuyển vào `.claude/project.json`. Những gì cần con người quyết định (ví dụ `--repo-owner`) được liệt kê trong "Decisions required" (chi tiết trong quickstart).
 
 ### Ba lớp trong một repo dự án
 

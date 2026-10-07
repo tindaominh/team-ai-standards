@@ -15,7 +15,7 @@ node ../team-ai-standards/scripts/adopt.mjs --profile strict --yes
 - Lối tắt (alias) từ bản cũ: `--stack nestjs-mysql`, `nestjs-postgres`, `node-postgres` (không framework + PostgreSQL + TypeORM), đều kèm rule AWS.
 - `--profile`: `strict` (repo khách hàng, mặc định) hoặc `standard` (chỉ repo nội bộ).
 - `--with-docs`: cài thêm script và workflow kiểm tra tài liệu (tài liệu 09).
-- File đã có thì không bao giờ bị ghi đè: script tạo `<file>.proposed` và `.claude/std-adoption-checklist.md` để bạn gộp. Script cũng từ chối chạy nếu khối CODEOWNERS của bộ tiêu chuẩn còn placeholder.
+- File đã có được gộp chứ không bị ghi đè: `CLAUDE.md` có thêm các khối `std:`, PR template và `CODEOWNERS` có thêm một khối ở cuối, các rule chặt hơn trong `settings.json` được chuyển vào `.claude/project.json`. Chạy `--dry-run` trước để xem diff và plan hash; `--yes` chỉ áp dụng đúng plan đó. Script cũng từ chối chạy nếu khối CODEOWNERS của bộ tiêu chuẩn còn placeholder.
 
 ## Ba lớp
 
@@ -37,14 +37,14 @@ node ../team-ai-standards/scripts/adopt.mjs --profile strict --yes
 | Settings | Claude Code đọc để quyết định lệnh nào được phép, phải hỏi hay bị chặn | Không tốn context |
 | Hook, script, workflow, manifest | AI không đọc tự động | Không tốn context |
 
-Với template 0.4.0: phần luôn được load khoảng 1.700 từ; tổ hợp fragment lớn nhất (Express + MySQL + PostgreSQL + TypeORM + AWS) khoảng 2.200 từ. Giới hạn 2.300 từ, mỗi rule fragment tối đa 150 từ; `npm run check:budget` trong repo tiêu chuẩn kiểm tra mọi tổ hợp hợp lệ. Rule trong `rules/local` cũng được load mọi session, nên hãy viết ngắn.
+Với template 0.5.0: phần luôn được load khoảng 1.780 từ; tổ hợp fragment lớn nhất (Express + MySQL + PostgreSQL + TypeORM + AWS) khoảng 2.290 từ. Giới hạn 2.300 từ, mỗi rule fragment tối đa 150 từ; `npm run check:budget` trong repo tiêu chuẩn kiểm tra mọi tổ hợp hợp lệ. Rule trong `rules/local` cũng được load mọi session, nên hãy viết ngắn.
 
 ## CLAUDE.md (lớp 2)
 
 - **Vai trò:** "bản đồ" của repo cho AI: service làm gì, cấu trúc thư mục, kiến trúc tóm tắt, quy định riêng, link tài liệu.
-- **Khung từ script áp dụng:** các mục `TODO(adopt)` là phần bạn điền (khoảng 20 phút). Stack và profile đã được điền sẵn.
-- **Bảng lệnh:** nằm giữa marker `std-commands`, được sinh từ `.claude/project.json`. Không sửa tay; sửa `project.json` rồi chạy `node .claude/std/compose-settings.mjs`.
-- **Cập nhật:** PR cập nhật bộ tiêu chuẩn không bao giờ sửa file này.
+- **Khung từ script áp dụng:** các mục `TODO(adopt)` là phần bạn điền (khoảng 20 phút). Nếu repo đã có `CLAUDE.md`, nội dung của bạn được giữ nguyên.
+- **Khối `std:`:** hai khối `standard` (stack, profile, những file không được sửa) và `commands` (danh sách lệnh) nằm giữa `<!-- std:begin <name> -->` và `<!-- std:end <name> -->`, được sinh từ `.claude/project.json`. Không sửa tay; sửa `project.json` rồi chạy `node .claude/std/compose-settings.mjs`.
+- **Cập nhật:** PR cập nhật bộ tiêu chuẩn chỉ sửa phần bên trong các khối `std:`; phần còn lại không bao giờ bị đụng tới.
 
 ## `.claude/project.json` (lớp 2)
 
