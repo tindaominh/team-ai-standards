@@ -1,19 +1,14 @@
 #!/usr/bin/env node
-// Adopts the team AI standard in an existing (or empty) project repository.
-// Run from the project repository:
-//   node <path-to-standard>/scripts/adopt.mjs --profile strict --dry-run   review everything
-//   node <path-to-standard>/scripts/adopt.mjs --profile strict --yes       apply exactly that
-// Selection (each dimension is detected from package.json unless given):
-//   --framework nestjs|express|none   --db mysql|postgres (repeat or comma-separate)
-//   --data-access typeorm|raw|none    --with aws | --without-optional
-//   --stack nestjs-mysql|nestjs-postgres|node-postgres   alias that sets all dimensions
-//   (the lists live in templates/fragments/fragments.json)
-// Other flags: --with-docs, --repo-owner <@user|@org/team> (CODEOWNERS project owner),
-//   --carry-allow | --drop-allow (existing allow rules the profile does not grant),
-//   --propose-unresolved (write <file>.proposed for files that cannot be merged),
-//   --plan <hash> (require this plan instead of the one recorded by --dry-run).
+// Adopts the team AI standard in a project repository, or changes its stored
+// configuration later. Run from the project repository:
+//   node <path-to-standard>/scripts/adopt.mjs [options] --dry-run   review everything
+//   node <path-to-standard>/scripts/adopt.mjs [options] --yes       apply exactly that
+// Options: scripts/lib/adopt-options.mjs (also `--help` and the README tables).
 //
 // Guarantees:
+// - Each configuration value comes from a flag, then .claude/project.json, then
+//   detection, then the default; --dry-run shows the source of each. Configuration
+//   is stored in .claude/project.json, so later runs and updates reuse it.
 // - --dry-run prints every change (diffs of modified files) and a plan hash computed
 //   from the standard version, the flags, the existing files and the result. --yes
 //   recomputes it and stops if anything differs.
@@ -28,84 +23,96 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { applyBlocks, composeSettings, duplicateHeadings, insertBlocks, renderBlocks } from '../templates/.claude/std/compose.mjs';
+import { helpText, parseArgs } from './lib/adopt-options.mjs';
+import { buildPlan } from './lib/adopt-plan.mjs';
 import { unifiedDiff } from './lib/diff.mjs';
 import { gitProblems } from './lib/git.mjs';
-import { appendBlock, headings, mergeSettings } from './lib/merge.mjs';
 import {
-  CODEOWNERS_KEY, CODEOWNERS_LOCATIONS, COMMAND_CANDIDATES, DIMENSIONS, FLAG_FOR, MANAGED_MARKER, PR_BLOCK_RE, PR_KEY, T,
-  claudeSkeleton, codeownersPlaceholders, codeownersTemplate, coreFiles, describe, detect, expandAlias, findBlock, hash,
-  normalize, optionalFiles, prBlock, prTemplate, registry, summary, validate, version
+  COMMAND_CANDIDATES, DIMENSIONS, FLAG_FOR, codeownersPlaceholders, describe, detect, expandAlias, hash, normalize,
+  registry, summary, validate, version
 } from './lib/standard.mjs';
 
-const args = process.argv.slice(2);
-const opt = (name, fallback) => {
-  const i = args.indexOf(`--${name}`);
-  return i > -1 ? args[i + 1] : fallback;
-};
-const all = (name) => args.flatMap((a, i) => (a === `--${name}` && args[i + 1] ? args[i + 1].split(',') : [])).map((x) => x.trim()).filter(Boolean);
-const DRY = args.includes('--dry-run');
-const YES = args.includes('--yes');
-const PROPOSE = args.includes('--propose-unresolved');
-const TARGET = resolve(opt('target', process.cwd()));
-const profile = opt('profile', 'strict');
-const repoOwner = opt('repo-owner');
-const allowChoice = args.includes('--carry-allow') ? 'carry' : args.includes('--drop-allow') ? 'drop' : undefined;
+const argv = process.argv.slice(2);
+const { opts, errors: argErrors } = parseArgs(argv);
 const die = (code, msg) => {
   console.error(`adopt: ${msg}`);
   process.exit(code);
 };
+if (opts.help) {
+  console.log(helpText());
+  process.exit(0);
+}
+if (argErrors.length) die(2, argErrors.join('\n  '));
+const DRY = Boolean(opts['dry-run']);
+const YES = Boolean(opts.yes);
+const TARGET = resolve(opts.target || process.cwd());
+if (opts['carry-allow'] && opts['drop-allow']) die(2, 'pass either --carry-allow or --drop-allow, not both.');
+const allowChoice = opts['carry-allow'] ? 'carry' : opts['drop-allow'] ? 'drop' : undefined;
 
 const placeholders = codeownersPlaceholders();
 if (placeholders.length) {
   die(2, `the standard is not ready for adoption: templates/.github/CODEOWNERS still has placeholder owners in the team-ai-standard block (${placeholders.join(', ')}). The owner of the standard must replace them with the real GitHub team (for example @<org>/ai-standard-owners) first.`);
 }
-if (!['strict', 'standard'].includes(profile)) die(2, '--profile must be strict (client repositories, default) or standard (internal repositories only).');
-if (args.includes('--carry-allow') && args.includes('--drop-allow')) die(2, 'pass either --carry-allow or --drop-allow, not both.');
-if (repoOwner !== undefined && !/^@[A-Za-z0-9-]+(\/[A-Za-z0-9._-]+)?$/.test(repoOwner)) die(2, `--repo-owner must be @user or @org/team (got ${JSON.stringify(repoOwner)}).`);
-
 const exists = (p) => existsSync(join(TARGET, p));
 const read = (p) => readFileSync(join(TARGET, p), 'utf8');
 
+// --- a previous adoption: its stored configuration is the starting point -------------------
+let previous = null;
 if (exists('.claude/project.json')) {
-  const v = exists('.claude/STANDARD_VERSION') ? read('.claude/STANDARD_VERSION').trim() : 'unknown';
-  console.log(`Nothing to do: this repository already uses the team AI standard (version ${v}).`);
-  console.log('New versions arrive as update pull requests. Project settings live in .claude/project.json.');
-  if (exists('.claude/std-adoption-checklist.md')) console.log('Open items from adoption: .claude/std-adoption-checklist.md');
-  process.exit(0);
+  try {
+    previous = JSON.parse(read('.claude/project.json'));
+  } catch (err) {
+    die(2, `.claude/project.json cannot be parsed (${err.message}); fix it first.`);
+  }
+  const installed = exists('.claude/STANDARD_VERSION') ? read('.claude/STANDARD_VERSION').trim() : 'unknown';
+  if (installed !== version()) {
+    die(3, `this repository uses version ${installed} of the standard and this is ${version()}. Update it first (the update pull request, or scripts/sync-standard.mjs --target <dir>); adopt then changes its configuration.`);
+  }
 }
 
-// --- stack selection --------------------------------------------------------------
+// --- values and where they come from: flag > project.json > detected > default ------------
+const sources = {};
+function pick(name, flag, stored, fallback, fallbackSource = 'default') {
+  if (flag !== undefined) { sources[name] = 'flag'; return flag; }
+  if (stored !== undefined) { sources[name] = 'project.json'; return stored; }
+  sources[name] = fallbackSource;
+  return fallback;
+}
+const profile = pick('profile', opts.profile, previous?.profile, 'strict');
+if (!['strict', 'standard'].includes(profile)) die(2, '--profile must be strict (client repositories, default) or standard (internal repositories only).');
+const repoOwner = pick('repo-owner', opts['repo-owner'], previous?.repoOwner ?? undefined, null);
+if (repoOwner !== null && !/^@[A-Za-z0-9-]+(\/[A-Za-z0-9._-]+)?$/.test(repoOwner)) die(2, `--repo-owner must be @user or @org/team (got ${JSON.stringify(repoOwner)}).`);
+const manifestDocs = previous && exists('.claude/std/manifest.json') && Object.keys(JSON.parse(read('.claude/std/manifest.json')).files || {}).includes('scripts/generate-docs.mjs');
+const withDocs = pick('with-docs', opts['with-docs'], previous ? (previous.optionalGroups ? previous.optionalGroups.includes('docs') : manifestDocs) : undefined, false);
+
 const detected = detect(TARGET);
-const source = Object.fromEntries(DIMENSIONS.map((d) => [d, 'detected']));
-let selection = detected.selection;
-const stackAlias = opt('stack');
-if (stackAlias) {
+let selection = previous ? normalize(previous.stack) : detected.selection;
+for (const d of DIMENSIONS) sources[d] = previous ? 'project.json' : 'detected';
+if (opts.stack) {
   try {
-    selection = expandAlias(stackAlias);
+    selection = expandAlias(opts.stack);
   } catch (err) {
     die(2, err.message);
   }
-  for (const d of DIMENSIONS) source[d] = `--stack ${stackAlias}`;
+  for (const d of DIMENSIONS) sources[d] = `flag (--stack ${opts.stack})`;
 }
-const flagFor = { framework: opt('framework'), databases: all('db'), dataAccess: opt('data-access'), optional: all('with') };
-if (flagFor.framework) { selection.framework = flagFor.framework; source.framework = 'flag'; }
-if (flagFor.databases.length) { selection.databases = flagFor.databases; source.databases = 'flag'; }
-if (flagFor.dataAccess) { selection.dataAccess = flagFor.dataAccess; source.dataAccess = 'flag'; }
-if (flagFor.optional.length) { selection.optional = flagFor.optional; source.optional = 'flag'; }
-if (args.includes('--without-optional')) { selection.optional = []; source.optional = 'flag'; }
+if (opts.framework) { selection.framework = opts.framework; sources.framework = 'flag'; }
+if (opts.db) { selection.databases = opts.db; sources.databases = 'flag'; }
+if (opts['data-access']) { selection.dataAccess = opts['data-access']; sources.dataAccess = 'flag'; }
+if (opts.with) { selection.optional = opts.with; sources.optional = 'flag'; }
+if (opts['without-optional']) { selection.optional = []; sources.optional = 'flag'; }
 selection = normalize(selection);
 
 const reg = registry().dimensions;
 const options = () => DIMENSIONS.map((d) => `  ${d.padEnd(11)} ${Object.keys(reg[d].values).join(' | ')}`).join('\n');
-const unresolved = detected.ambiguous.filter((a) => source[a.dimension] === 'detected');
+const unresolved = detected.ambiguous.filter((a) => sources[a.dimension] === 'detected');
 if (unresolved.length) {
   console.error('adopt: stack detection is ambiguous; nothing was written.\nDecisions required:');
   for (const a of unresolved) console.error(`  ${a.dimension}: found ${a.options.join(' and ')} — choose with ${a.hint}`);
   console.error(`\nOptions:\n${options()}\nAliases: ${Object.keys(registry().aliases).join(', ')}`);
   process.exit(3);
 }
-const stopping = detected.unsupported.filter((u) => source[u.dimension] === 'detected');
+const stopping = detected.unsupported.filter((u) => sources[u.dimension] === 'detected');
 if (stopping.length) {
   console.error('adopt: this repository uses something the team standard has no fragment for; nothing was written.\nDecisions required:');
   for (const u of stopping) {
@@ -117,7 +124,11 @@ if (stopping.length) {
   }
   process.exit(3);
 }
-const acknowledgedUnsupported = detected.unsupported.map((u) => u.dep).sort();
+// Acknowledged: what was acknowledged before, plus dependencies overridden by a flag now
+const acknowledgedUnsupported = [...new Set([
+  ...(previous ? previous.acknowledgedUnsupported || [] : []),
+  ...detected.unsupported.filter((u) => !previous || sources[u.dimension].startsWith('flag')).map((u) => u.dep)
+])].sort();
 const { errors, warnings } = validate(selection);
 if (errors.length) die(2, `invalid stack selection:\n  ${errors.join('\n  ')}\n\nOptions:\n${options()}`);
 
@@ -129,140 +140,53 @@ if (!DRY && !YES) {
   process.exit(3);
 }
 
-// --- commands from package.json -------------------------------------------------------
-const pkg = exists('package.json') ? JSON.parse(read('package.json')) : null;
-const scripts = (pkg && pkg.scripts) || {};
-const manager = exists('pnpm-lock.yaml') ? 'pnpm' : exists('yarn.lock') ? 'yarn' : 'npm';
-const runScript = (name) => (manager === 'npm' ? (name === 'test' ? 'npm test' : `npm run ${name}`) : `${manager} ${name}`);
-const installCmd = { npm: exists('package-lock.json') ? 'npm ci' : 'npm install', pnpm: 'pnpm install --frozen-lockfile', yarn: 'yarn install --frozen-lockfile' }[manager];
-const commands = { install: pkg ? installCmd : null };
+// --- commands: stored ones, or found in package.json on first adoption ----------------------
 const matched = {};
-for (const [key, candidates] of Object.entries(COMMAND_CANDIDATES)) {
-  const name = candidates.find((c) => c in scripts);
-  commands[key] = name ? runScript(name) : null;
-  if (name) matched[key] = name;
-}
-
-// --- plan ---------------------------------------------------------------------------
-// action: create | modify | propose | same. Only create/modify/propose write anything.
-const actions = [];
-const decisions = [];
-const suggestions = [];
-const manifest = {};
-const conflict = (path, content, what) => {
-  if (PROPOSE) actions.push({ path: `${path}.proposed`, action: 'propose', after: content, original: path, note: what });
-  decisions.push({ file: path, what, resolve: 'remove or rename your file, or pass --propose-unresolved', proposable: true });
-};
-function standardFile(path, content) {
-  if (!exists(path)) actions.push({ path, action: 'create', after: content });
-  else if (read(path) !== content) return conflict(path, content, 'exists and differs from the standard file');
-  else actions.push({ path, action: 'same', after: content });
-  manifest[path] = hash(content);
-}
-for (const f of coreFiles(selection)) standardFile(f.path, f.content);
-if (args.includes('--with-docs')) for (const f of optionalFiles('docs')) standardFile(f.path, f.content);
-
-// settings.json: the repository's stricter rules move into project.json
-const project = { stack: selection, acknowledgedUnsupported, profile, hooks: false, commands, permissions: { allow: [], ask: [], deny: [] } };
-const base = JSON.parse(readFileSync(join(T, `.claude/std/settings.${profile}.json`), 'utf8'));
-let merge = null;
-if (exists('.claude/settings.json')) {
-  merge = mergeSettings(read('.claude/settings.json'), composeSettings(base, project).settings, allowChoice);
-  project.permissions = merge.extra;
-  for (const d of merge.decisions) decisions.push({ ...d, proposable: !d.what.startsWith('allows') });
-}
-const settings = composeSettings(base, project).text;
-if (!exists('.claude/settings.json')) actions.push({ path: '.claude/settings.json', action: 'create', after: settings });
-else if (merge.decisions.some((d) => !d.what.startsWith('allows'))) {
-  if (PROPOSE) actions.push({ path: '.claude/settings.json.proposed', action: 'propose', after: settings, original: '.claude/settings.json', note: 'generated settings; your file was not changed' });
-} else if (read('.claude/settings.json') !== settings) actions.push({ path: '.claude/settings.json', action: 'modify', before: read('.claude/settings.json'), after: settings });
-if (!(merge && merge.decisions.length)) manifest['.claude/settings.json'] = hash(settings);
-
-const projectText = `${JSON.stringify(project, null, 2)}\n`;
-actions.push({ path: '.claude/project.json', action: 'create', after: projectText, showDiff: true });
-if (!exists('.claude/rules/local/.gitkeep')) actions.push({ path: '.claude/rules/local/.gitkeep', action: 'create', after: '' });
-
-// CLAUDE.md: the standard owns only its std blocks
-const blocks = renderBlocks(project);
-if (exists('CLAUDE.md')) {
-  const before = read('CLAUDE.md');
-  const after = insertBlocks(before, blocks);
-  if (after !== before) actions.push({ path: 'CLAUDE.md', action: 'modify', before, after });
-  for (const d of duplicateHeadings(after)) suggestions.push(`CLAUDE.md:${d.line} "${d.heading}" may repeat the std "${d.block}" block; remove it by hand if so (not changed).`);
-} else {
-  actions.push({ path: 'CLAUDE.md', action: 'create', after: applyBlocks(claudeSkeleton(), blocks) });
-}
-
-// PR template: a managed file, or a std block appended to the repository's template
-const pr = prTemplate();
-if (!exists('.github/pull_request_template.md')) {
-  actions.push({ path: '.github/pull_request_template.md', action: 'create', after: pr });
-  manifest['.github/pull_request_template.md'] = hash(pr);
-} else {
-  const before = read('.github/pull_request_template.md');
-  const { inner, text } = prBlock();
-  let after;
-  if (PR_BLOCK_RE.test(before)) after = before.replace(PR_BLOCK_RE, () => text);
-  else if (before.includes(MANAGED_MARKER)) after = pr;
-  else after = appendBlock(before, text);
-  if (after !== before) actions.push({ path: '.github/pull_request_template.md', action: 'modify', before, after });
-  if (after === pr) manifest['.github/pull_request_template.md'] = hash(pr);
-  else {
-    manifest[PR_KEY] = hash(inner);
-    const ours = new Set(headings(pr).map((h) => h.text.toLowerCase()));
-    for (const h of headings(before)) if (ours.has(h.text.toLowerCase())) suggestions.push(`.github/pull_request_template.md:${h.line} "${h.text}" repeats a section of the standard block; remove it by hand if so (not changed).`);
+let commands = previous?.commands;
+if (!commands) {
+  const pkg = exists('package.json') ? JSON.parse(read('package.json')) : null;
+  const scripts = (pkg && pkg.scripts) || {};
+  const manager = exists('pnpm-lock.yaml') ? 'pnpm' : exists('yarn.lock') ? 'yarn' : 'npm';
+  const runScript = (name) => (manager === 'npm' ? (name === 'test' ? 'npm test' : `npm run ${name}`) : `${manager} ${name}`);
+  const installCmd = { npm: exists('package-lock.json') ? 'npm ci' : 'npm install', pnpm: 'pnpm install --frozen-lockfile', yarn: 'yarn install --frozen-lockfile' }[manager];
+  commands = { install: pkg ? installCmd : null };
+  for (const [key, candidates] of Object.entries(COMMAND_CANDIDATES)) {
+    const name = candidates.find((c) => c in scripts);
+    commands[key] = name ? runScript(name) : null;
+    if (name) matched[key] = name;
   }
 }
 
-// CODEOWNERS: the standard block is appended (or refreshed); a new file needs the project owner
-const co = codeownersTemplate();
-const coPath = CODEOWNERS_LOCATIONS.find(exists);
-if (coPath) {
-  const before = read(coPath);
-  const found = findBlock(before);
-  const after = found ? before.slice(0, found.start) + co.block + before.slice(found.end) : appendBlock(before, co.block);
-  if (after !== before) actions.push({ path: coPath, action: 'modify', before, after });
-  manifest[`${coPath}${CODEOWNERS_KEY}`] = hash(co.block);
-} else if (!repoOwner) {
-  decisions.push({ file: '.github/CODEOWNERS', what: 'needs the owner of this repository\'s project files', resolve: 'pass --repo-owner @org/team (or @user)' });
-} else {
-  const full = co.full.replace(/^# TODO\(adopt\).*\n/m, '').replace(/@<org>\/<repo-team>/g, repoOwner);
-  actions.push({ path: '.github/CODEOWNERS', action: 'create', after: full });
-  manifest[`.github/CODEOWNERS${CODEOWNERS_KEY}`] = hash(co.block);
-}
-
-const manifestText = `${JSON.stringify({ standardVersion: version(), stack: selection, files: Object.fromEntries(Object.entries(manifest).sort()) }, null, 2)}\n`;
-actions.push({ path: '.claude/std/manifest.json', action: 'create', after: manifestText });
-const proposals = actions.filter((a) => a.action === 'propose');
-if (proposals.length) {
-  const lines = ['# Team AI standard: adoption checklist', '', 'These files could not be merged automatically. Merge each `.proposed` file into your file, delete it, then delete this checklist.', ''];
-  for (const p of proposals) lines.push(`- [ ] \`${p.original}\`: ${p.note}; compare with \`${p.path}\`.`);
-  lines.push('- [ ] Run `node .claude/std/compose-settings.mjs --check`.', '');
-  actions.push({ path: '.claude/std-adoption-checklist.md', action: 'create', after: lines.join('\n') });
-}
-actions.sort((a, b) => a.path.localeCompare(b.path));
-
+// --- plan ---------------------------------------------------------------------------------
+const PROPOSE = Boolean(opts['propose-unresolved']);
+const { actions, decisions, suggestions, merge, proposals } = buildPlan({
+  target: TARGET, selection, profile, repoOwner, withDocs, commands, acknowledgedUnsupported, allowChoice, propose: PROPOSE, previous
+});
 const writes = actions.filter((a) => a.action !== 'same');
-const modifies = writes.some((a) => a.action === 'modify');
+const modifies = writes.some((a) => a.action === 'modify' || a.action === 'delete');
 const open = decisions.filter((d) => !(PROPOSE && d.proposable));
-const flags = args.filter((a, i) => !['--dry-run', '--yes', '--plan'].includes(a) && args[i - 1] !== '--plan');
+const flags = argv.filter((a, i) => !['--dry-run', '--yes', '--plan'].includes(a) && argv[i - 1] !== '--plan');
 const planHash = hash(JSON.stringify({
   version: version(), target: TARGET, flags,
-  actions: writes.map((a) => [a.path, a.action, a.before === undefined ? null : hash(a.before), hash(a.after)]),
+  actions: writes.map((a) => [a.path, a.action, a.before === undefined ? null : hash(a.before), a.after === undefined ? null : hash(a.after)]),
   decisions: open.map((d) => `${d.file}: ${d.what}`)
 })).slice(0, 16);
 
-// --- report ---------------------------------------------------------------------------
+// --- report -------------------------------------------------------------------------------
 console.log(`Team AI standard ${version()} — profile ${profile}${DRY ? ' — DRY RUN, nothing is written' : ''}`);
 console.log(`Stack: ${describe(selection)} (${summary(selection)})`);
-for (const d of DIMENSIONS) {
-  const v = Array.isArray(selection[d]) ? (selection[d].join(', ') || '(none)') : selection[d];
-  console.log(`  ${d.padEnd(11)} ${String(v).padEnd(18)} ${source[d]}`);
-}
-if (DIMENSIONS.some((d) => source[d] === 'detected')) for (const n of detected.notes) console.log(`  note: ${n}`);
+console.log('Values (source: flag, project.json, detected or default):');
+const shown = (v) => (Array.isArray(v) ? (v.join(', ') || '(none)') : v === null ? '(none)' : String(v));
+const valueRows = [['profile', profile], ...DIMENSIONS.map((d) => [d, selection[d]]), ['repo-owner', repoOwner], ['with-docs', withDocs ? 'on' : 'off']];
+for (const [name, v] of valueRows) console.log(`  ${name.padEnd(11)} ${shown(v).padEnd(18)} ${sources[name]}`);
+if (DIMENSIONS.some((d) => sources[d] === 'detected')) for (const n of detected.notes) console.log(`  note: ${n}`);
 for (const w of warnings) console.log(`warning: ${w}`);
-if (acknowledgedUnsupported.length) console.log(`note: no fragment exists for ${acknowledgedUnsupported.join(', ')}; your explicit choice will be recorded in .claude/project.json as acknowledgedUnsupported.`);
+if (acknowledgedUnsupported.length) console.log(`note: no fragment exists for ${acknowledgedUnsupported.join(', ')}; recorded in .claude/project.json as acknowledgedUnsupported.`);
 
+if (!writes.length && !open.length) {
+  console.log('\nNothing to do: the repository already matches these values and this version of the standard.');
+  process.exit(0);
+}
 console.log('\nPlan:');
 for (const a of writes) console.log(`  ${a.action.padEnd(7)}  ${a.path}${a.note ? `  (${a.note})` : ''}`);
 const unchanged = actions.length - writes.length;
@@ -275,8 +199,10 @@ if (merge) {
   for (const r of merge.dropped) console.log(`  dropped  ${r.list.padEnd(5)} ${r.rule}  (${r.reason})`);
   for (const r of merge.replaced) console.log(`  replaced ${r}`);
 }
-console.log('\nCommands found in package.json:');
-for (const [key, value] of Object.entries(commands)) console.log(`  ${key.padEnd(19)} ${value || 'TODO (not found)'}${matched[key] ? `  ← "${matched[key]}"` : ''}`);
+if (!previous) {
+  console.log('\nCommands found in package.json:');
+  for (const [key, value] of Object.entries(commands)) console.log(`  ${key.padEnd(19)} ${value || 'TODO (not found)'}${matched[key] ? `  ← "${matched[key]}"` : ''}`);
+}
 if (suggestions.length) {
   console.log('\nOptional cleanup (never done automatically):');
   for (const s of suggestions) console.log(`  - ${s}`);
@@ -292,24 +218,28 @@ if (git.length) {
 }
 console.log(`\nPlan hash: ${planHash}`);
 
-// --- dry run: record the plan ------------------------------------------------------------
+// --- dry run: record the plan ----------------------------------------------------------------
 const recordDir = join(tmpdir(), `team-ai-standard-adopt-${process.getuid ? process.getuid() : 'user'}`);
 const recordFile = join(recordDir, `${hash(TARGET).slice(0, 16)}.plan`);
 if (DRY) {
   mkdirSync(recordDir, { recursive: true, mode: 0o700 });
   writeFileSync(recordFile, `${planHash}\n`, { mode: 0o600 });
-  console.log(open.length ? `\nDry run: no files were written. Resolve the decisions above, then run --dry-run again.` : `\nDry run: no files were written. To apply exactly this plan, run the same command with --yes instead of --dry-run.`);
+  console.log(open.length ? '\nDry run: no files were written. Resolve the decisions above, then run --dry-run again.' : '\nDry run: no files were written. To apply exactly this plan, run the same command with --yes instead of --dry-run.');
   process.exit(0);
 }
 
-// --- apply ------------------------------------------------------------------------------
+// --- apply ----------------------------------------------------------------------------------
 if (open.length) die(3, `${open.length} decision(s) required; nothing was written. See "Decisions required" above.`);
-const expected = opt('plan') || (existsSync(recordFile) ? readFileSync(recordFile, 'utf8').trim() : null);
+const expected = opts.plan || (existsSync(recordFile) ? readFileSync(recordFile, 'utf8').trim() : null);
 if (!expected) die(3, 'no reviewed plan for this repository; nothing was written. Run the same command with --dry-run first, then --yes.');
 if (expected !== planHash) die(3, `the plan changed since it was reviewed (reviewed ${expected}, now ${planHash}): a file, a flag or the standard changed. Nothing was written. Run --dry-run again and review the new plan.`);
 if (git.length) die(3, 'existing files would be modified, but git is not in a safe state; nothing was written. Run the commands under "Before --yes" above.');
 
 for (const a of writes) {
+  if (a.action === 'delete') {
+    rmSync(join(TARGET, a.path));
+    continue;
+  }
   mkdirSync(dirname(join(TARGET, a.path)), { recursive: true });
   writeFileSync(join(TARGET, a.path), a.after);
 }
@@ -318,16 +248,16 @@ const verify = spawnSync('node', [join(TARGET, '.claude/std/compose-settings.mjs
 if (verify.status !== 0 && !proposals.length) die(1, `written, but the consistency check failed:\n${verify.stderr}`);
 if (verify.status !== 0) console.log('\nnote: std-check passes once the proposed file(s) are merged.');
 
-const claudeNow = read('CLAUDE.md');
+const claudeNow = exists('CLAUDE.md') ? read('CLAUDE.md') : '';
 const todos = (claudeNow.match(/TODO\(adopt\)/g) || []).length;
 const missing = Object.entries(commands).filter(([, v]) => !v).map(([k]) => k);
 const gitignore = exists('.gitignore') ? read('.gitignore') : '';
 const steps = [];
 if (todos) steps.push(`Fill in ${todos} TODO(adopt) item(s) in CLAUDE.md (about 20 minutes).`);
-if (missing.length) steps.push(`Set these commands in .claude/project.json, or leave them null if the repository has none: ${missing.join(', ')}. Then run: node .claude/std/compose-settings.mjs`);
+if (missing.length && !previous) steps.push(`Set these commands in .claude/project.json, or leave them null if the repository has none: ${missing.join(', ')}. Then run: node .claude/std/compose-settings.mjs`);
 if (proposals.length) steps.push('Merge the proposed file(s): see .claude/std-adoption-checklist.md');
 if (!/settings\.local\.json/.test(gitignore)) steps.push('Add .claude/settings.local.json to .gitignore.');
 steps.push('Review with git diff; to undo everything: git restore . && git clean -fd (check first with git clean -nd).');
-steps.push('Commit, open a PR, and ask the owner of the standard to add this repository to .github/standard-targets.json.');
+steps.push(previous ? 'Commit and open a PR.' : 'Commit, open a PR, and ask the owner of the standard to add this repository to .github/standard-targets.json.');
 console.log(`\nApplied plan ${planHash}: ${writes.length} file(s) written. Next steps:`);
 steps.forEach((s, i) => console.log(`  ${i + 1}. ${s}`));

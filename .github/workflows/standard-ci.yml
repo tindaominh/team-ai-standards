@@ -1,6 +1,6 @@
 # CI for the team standard itself: Markdown lint, JSON validity, settings
 # templates in sync with their generator, bilingual parity, context budget,
-# and a smoke test of the scripts shipped in templates/.
+# README option tables, and a smoke test of the scripts shipped in templates/.
 name: standard-ci
 
 on:
@@ -45,6 +45,11 @@ jobs:
 
       - name: Context budget
         run: npm run check:budget
+
+      # Fails when the README option tables differ from scripts/lib/adopt-options.mjs,
+      # so the documented adoption options never drift from the parser and --help.
+      - name: README option tables are generated from the options list
+        run: npm run check:readme
 
       - name: Smoke test of template scripts and hooks
         run: npm run test:scripts

@@ -27,7 +27,7 @@ Khi major version còn là `0`, các bản minor có thể chứa thay đổi ph
 ## 3. Phát hành
 
 1. Owner of the standard mở release PR: tăng version trong `package.json` và `templates/.claude/STANDARD_VERSION`, ghi ngày cho heading trong CHANGELOG.
-2. CI (`standard-ci`) pass: lint, JSON, settings, parity, budget, smoke test.
+2. CI (`standard-ci`) pass: lint, JSON, settings, parity, budget, bảng tuỳ chọn trong README, smoke test.
 3. Sau khi merge, owner tạo annotated tag trên `main`: `git tag -a v0.2.0 -m "Team AI standard 0.2.0"` rồi push tag đó.
 4. Owner tạo GitHub release từ tag, dùng phần CHANGELOG tương ứng làm release notes.
 5. Tag sẽ kích hoạt job cập nhật (mục tiếp theo).
@@ -41,7 +41,7 @@ Mỗi repository đã adopt có ba lớp. Mỗi file thuộc đúng một lớp,
 | Lớp | File | Owner | Thay đổi bằng cách |
 | --- | --- | --- | --- |
 | **1. Standard** | `.claude/rules/std/**`, `.claude/agents/std-*`, `.claude/skills/std-*/**`, `.claude/std/**` (base settings, compose script, hook, manifest), `.claude/settings.json` (được sinh ra), `.claude/STANDARD_VERSION`, `.github/pull_request_template.md` (hoặc khối `std:` của nó khi repository có template riêng), khối `team-ai-standard` ở cuối `CODEOWNERS`, các khối `std:` trong `CLAUDE.md`, `.github/workflows/std-check.yml` | Owner of the standard | Chỉ qua pull request cập nhật; không bao giờ sửa trực tiếp trong repository |
-| **2. Project** | `CLAUDE.md` ngoài các khối `std:`, `.claude/project.json` (stack, profile, lệnh, permission rule bổ sung, bật/tắt hook), `.claude/rules/local/**`, phần còn lại của `CODEOWNERS` | Team của repository | Pull request bình thường |
+| **2. Project** | `CLAUDE.md` ngoài các khối `std:`, `.claude/project.json` (stack, profile, owner của dự án `repoOwner`, các nhóm tuỳ chọn, lệnh, permission rule bổ sung, bật/tắt hook), `.claude/rules/local/**`, phần còn lại của `CODEOWNERS` | Team của repository | Pull request bình thường |
 | **3. Personal** | `.claude/settings.local.json` | Từng developer | Không bao giờ commit |
 
 Các lớp ghép với nhau như sau:
@@ -144,6 +144,7 @@ Xem trước, rồi áp dụng:
 - `--yes` tính lại plan. Nếu hash khác với plan đã xem (một file bị sửa giữa chừng, flag khác, version bộ tiêu chuẩn mới), script dừng và yêu cầu chạy lại `--dry-run`. `--plan <hash>` yêu cầu đúng một plan cụ thể thay cho plan đã lưu.
 - Trước khi sửa bất kỳ file nào đã có, `--yes` yêu cầu một git repository có working tree sạch, đang ở branch khác default branch; nếu không, script dừng và in đúng các lệnh git cần chạy. Việc tạo file mới không có điều kiện này.
 - Chạy lại `--yes`, hoặc `--dry-run` sau đó, sẽ báo "Nothing to do".
+- Các lựa chọn cấu hình (stack, profile, `--repo-owner`, `--with-docs`) được lưu trong `.claude/project.json`. Ở lần chạy sau, mỗi giá trị lấy từ flag, rồi `project.json`, rồi kết quả detect, rồi giá trị mặc định, và `--dry-run` in ra nguồn của từng giá trị. Lần chạy sau có flag chỉ đổi đúng giá trị đó: `project.json` giữ các key khác, settings và các khối `std:` được sinh lại, các file standard mà lựa chọn mới không cần nữa bị xoá. Repo phải đang dùng cùng version của bộ tiêu chuẩn (cập nhật trước). PR cập nhật đọc cùng các giá trị này, kể cả `repoOwner` cho khối `CODEOWNERS`. Mọi tuỳ chọn: README, mục "Tuỳ chọn của adopt.mjs" (sinh từ `scripts/lib/adopt-options.mjs`; `adopt.mjs --help` in ra cùng danh sách).
 
 Những gì được làm tự động:
 

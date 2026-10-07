@@ -2,12 +2,8 @@
 # protection of the base branch.
 
 # ---- Project part (owned by this repository's team) ----
-# TODO(adopt): replace the placeholders with this repository's GitHub teams.
 /docs/                    @<org>/<repo-team>
 /README.md                @<org>/<repo-team>
-/CLAUDE.md                @<org>/<repo-team>
-/.claude/project.json     @<org>/<repo-team>
-/.claude/rules/local/     @<org>/<repo-team>
 
 # ---- Team AI standard block (managed; keep it at the END of this file) ----
 # BEGIN team-ai-standard

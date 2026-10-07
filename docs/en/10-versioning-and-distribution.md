@@ -27,7 +27,7 @@ While the major version is `0`, minor releases may contain breaking changes; the
 ## 3. Releasing
 
 1. The owner of the standard opens a release PR: version bump in `package.json` and `templates/.claude/STANDARD_VERSION`, CHANGELOG heading dated.
-2. CI (`standard-ci`) passes: lint, JSON, settings, parity, budget, smoke tests.
+2. CI (`standard-ci`) passes: lint, JSON, settings, parity, budget, README option tables, smoke tests.
 3. After merge, the owner creates an annotated tag on `main`: `git tag -a v0.2.0 -m "Team AI standard 0.2.0"` and pushes it.
 4. The owner creates a GitHub release from the tag, with the CHANGELOG section as release notes.
 5. The tag starts the update job (next section).
@@ -41,7 +41,7 @@ Every adopted repository has three layers. Each file belongs to exactly one laye
 | Layer | Files | Owner | Changed by |
 | --- | --- | --- | --- |
 | **1. Standard** | `.claude/rules/std/**`, `.claude/agents/std-*`, `.claude/skills/std-*/**`, `.claude/std/**` (base settings, compose script, hooks, manifest), `.claude/settings.json` (generated), `.claude/STANDARD_VERSION`, `.github/pull_request_template.md` (or its `std:` block when the repository has its own template), the `team-ai-standard` block at the end of `CODEOWNERS`, the `std:` blocks in `CLAUDE.md`, `.github/workflows/std-check.yml` | Owner of the standard | Update pull requests only; never edited in the repository |
-| **2. Project** | `CLAUDE.md` outside the `std:` blocks, `.claude/project.json` (stack, profile, commands, extra permission rules, hooks on/off), `.claude/rules/local/**`, the rest of `CODEOWNERS` | The repository's team | Normal pull requests |
+| **2. Project** | `CLAUDE.md` outside the `std:` blocks, `.claude/project.json` (stack, profile, project owner `repoOwner`, optional groups, commands, extra permission rules, hooks on/off), `.claude/rules/local/**`, the rest of `CODEOWNERS` | The repository's team | Normal pull requests |
 | **3. Personal** | `.claude/settings.local.json` | Each developer | Never committed |
 
 How the layers fit together:
@@ -144,6 +144,7 @@ Review, then apply:
 - `--yes` recomputes the plan. If the hash differs from the reviewed one (a file edited in between, another flag, a new standard version), it stops and asks for a new `--dry-run`. `--plan <hash>` requires a specific plan instead of the recorded one.
 - Before it changes any existing file, `--yes` requires a git repository with a clean working tree, on a branch other than the default branch; otherwise it stops and prints the exact git commands. Creating new files has no such condition.
 - Running `--yes` again, or `--dry-run` after it, reports "Nothing to do".
+- Configuration choices (stack, profile, `--repo-owner`, `--with-docs`) are stored in `.claude/project.json`. On a later run each value comes from a flag, then `project.json`, then detection, then the default, and `--dry-run` prints the source of each. A later run with a flag changes only that value: `project.json` keeps its other keys, the settings and `std:` blocks are regenerated, and standard files the new selection no longer needs are removed. It requires the repository to be on the same version of the standard (update first). Update pull requests read the same values, including `repoOwner` for the `CODEOWNERS` block. Every option: README, "Adoption options" (generated from `scripts/lib/adopt-options.mjs`; `adopt.mjs --help` prints the same list).
 
 What is automatic:
 

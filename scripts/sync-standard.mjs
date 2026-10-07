@@ -21,7 +21,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join } from 'node:path';
 import {
   CODEOWNERS_KEY, CODEOWNERS_LOCATIONS, MANAGED_MARKER, OPTIONAL, PR_BLOCK_RE, PR_KEY, codeownersPlaceholders,
-  codeownersTemplate, coreFiles, findBlock, hash, normalize, optionalFiles, prBlock, prTemplate, summary, unsupportedIn,
+  codeownersBlock, coreFiles, findBlock, hash, normalize, optionalFiles, prBlock, prTemplate, summary, unsupportedIn,
   validate, version
 } from './lib/standard.mjs';
 import { BLOCK_NAMES, hasBlock } from '../templates/.claude/std/compose.mjs';
@@ -74,10 +74,12 @@ const removed = [];
 const notManaged = [];
 const manifest = {};
 
-// 1. Core files for the repository's stack, plus optional groups it installed
+// 1. Core files for the repository's stack, plus the optional groups it chose
+//    (project.json "optionalGroups"; repositories adopted earlier: what the manifest lists)
 const wanted = coreFiles(selection);
 for (const [group, entries] of Object.entries(OPTIONAL)) {
-  if (entries.some(([, dest]) => oldFiles.includes(dest))) wanted.push(...optionalFiles(group));
+  const chosen = Array.isArray(project.optionalGroups) ? project.optionalGroups.includes(group) : entries.some(([, dest]) => oldFiles.includes(dest));
+  if (chosen) wanted.push(...optionalFiles(group));
 }
 const wantedPaths = new Set(wanted.map((f) => f.path));
 for (const f of wanted) {
@@ -126,8 +128,8 @@ if (prText !== null && PR_BLOCK_RE.test(prText)) {
   manifest['.github/pull_request_template.md'] = hash(pr);
 }
 
-// 4. CODEOWNERS: only the block between the markers
-const block = codeownersTemplate().block;
+// 4. CODEOWNERS: only the block between the markers, with the project owner from project.json
+const block = codeownersBlock(project.repoOwner);
 const coPath = CODEOWNERS_LOCATIONS.find(exists);
 if (coPath) {
   const text = read(coPath);

@@ -228,6 +228,17 @@ export function codeownersTemplate() {
   return { full: text, block: text.slice(start, end) };
 }
 
+// The standard block for one repository: the project files' owner (repoOwner in
+// .claude/project.json) goes first, so the standard's own lines still win.
+export function codeownersBlock(repoOwner) {
+  const { block } = codeownersTemplate();
+  if (!repoOwner) return block;
+  const lines = block.split('\n');
+  const at = lines.findIndex((l) => l !== '' && !l.startsWith('#'));
+  const own = ['/CLAUDE.md', '/.claude/project.json', '/.claude/rules/local/'].map((p) => `${p.padEnd(26)}${repoOwner}`);
+  return [...lines.slice(0, at), '# Project files: owner from .claude/project.json "repoOwner".', ...own, ...lines.slice(at)].join('\n');
+}
+
 // The standard's CODEOWNERS block must name a real team before any repository adopts.
 export function codeownersPlaceholders() {
   return [...new Set(codeownersTemplate().block.match(/@<[^>\s]+>(\/<[^>\s]+>)?/g) || [])];

@@ -14,6 +14,7 @@ One page for developers. You do not need to read the other documents to start; t
     - Shortcuts: `--stack nestjs-mysql`, `nestjs-postgres` or `node-postgres` (no framework + PostgreSQL + TypeORM), each with the AWS rule.
     - `--profile`: `strict` for client repositories (default), `standard` only for internal repositories. Unsure? Use `strict`.
     - Add `--with-docs` to also install the documentation checks (doc 09).
+    - Every option, its default and where it is stored: [README, Adoption options](../../README.md#adoption-options). Your choices are stored in `.claude/project.json`; a later run reuses them unless you pass a flag.
     - Nothing is written. The output lists every file to create, a diff of every file to change, the permission rules carried over from your settings or dropped (with the reason), and a plan hash.
     - **Decisions required** lists what only a person can decide, with the flag to pass: `--repo-owner @org/team` when the repository has no `CODEOWNERS`, `--carry-allow` or `--drop-allow` for `allow` rules in your settings that the profile does not grant, a stack flag when detection is ambiguous. Add the flag and run `--dry-run` again.
 2. **Apply exactly that plan** on a new branch with a clean working tree, with the same flags and `--yes` instead of `--dry-run`:

@@ -7,6 +7,8 @@ import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { OPTIONS, helpText, optionsTable } from './lib/adopt-options.mjs';
+import { codeownersBlock } from './lib/standard.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const T = join(ROOT, 'templates');
@@ -406,7 +408,7 @@ try {
   // Reordering keys in project.json never triggers the mismatch warning
   const reordered = { ...JSON.parse(readFileSync(projPath, 'utf8')) };
   reordered.stack = { optional: ['aws'], dataAccess: 'raw', databases: ['postgres'], framework: 'nestjs', runtime: 'node' };
-  writeFileSync(projPath, `${JSON.stringify({ permissions: reordered.permissions, commands: reordered.commands, hooks: reordered.hooks, profile: reordered.profile, stack: reordered.stack }, null, 2)}\n`);
+  writeFileSync(projPath, `${JSON.stringify(Object.fromEntries(Object.keys(reordered).reverse().map((k) => [k, reordered[k]])), null, 2)}\n`);
   check('compose --check: reordered keys give no mismatch warning', !compose(app, '--check').stdout.includes('differs from the installed fragments'));
   const two = newRepo('two-dbs');
   apply(two, '--framework', 'express', '--db', 'mysql,postgres', '--data-access', 'raw', '--with', 'aws');
@@ -428,6 +430,50 @@ try {
   const syncRefused = run('node', [join(STD_PLACEHOLDER, 'scripts/sync-standard.mjs'), '--target', app]);
   check('sync: refuses while the CODEOWNERS block has placeholder owners', syncRefused.status === 2 && syncRefused.stderr.includes('placeholder owners'), syncRefused.stderr);
 
+  // 2l. options: one list drives the parser, --help and the README; stored values are reused
+  const help = adopt(newRepo('help'), '--help');
+  check('adopt --help: printed from the options list', help.status === 0 && help.stdout.trim() === helpText().trim(), help.stderr);
+  check('adopt --help: lists every option with its description', OPTIONS.every((o) => help.stdout.includes(`--${o.name}`) && help.stdout.includes(o.en.replace(/`/g, ''))));
+  const unknown = adopt(newRepo('unknown-option'), '--profle', 'strict', '--dry-run');
+  check('adopt: unknown option rejected', unknown.status === 2 && unknown.stderr.includes('unknown option "--profle"'), unknown.stderr);
+  const readme = readFileSync(join(ROOT, 'README.md'), 'utf8');
+  check('README: English and Vietnamese option tables match the options list', readme.includes(optionsTable('en')) && readme.includes(optionsTable('vi')));
+  const staleReadme = join(work, 'README.md');
+  writeFileSync(staleReadme, readme.replace('| `--profile` |', '| `--profiles` |'));
+  const stale2 = run('node', [join(ROOT, 'scripts/generate-readme.mjs'), '--check', '--readme', staleReadme]);
+  check('README check: a stale table fails with the command to regenerate', stale2.status === 1 && stale2.stderr.includes('npm run docs:readme'), stale2.stderr);
+  check('dry run: value sources for a new repository', /profile\s+strict\s+default/.test(dry.stdout) && /framework\s+nestjs\s+detected/.test(dry.stdout) && /repo-owner\s+\(none\)\s+default/.test(dry.stdout), dry.stdout);
+
+  const reuse = gitRepo(newRepo('reuse', { 'package.json': pkg(nestDeps, nestScripts) }));
+  const first = apply(reuse, '--with-docs');
+  check('adopt: repoOwner and optionalGroups stored in project.json', first.status === 0 && stackOf(reuse) && JSON.parse(readFileSync(join(reuse, '.claude/project.json'), 'utf8')).repoOwner === OWNER[1] && same(JSON.parse(readFileSync(join(reuse, '.claude/project.json'), 'utf8')).optionalGroups, ['docs']), first.stdout + first.stderr);
+  check('adopt: CODEOWNERS standard block names the project owner', readFileSync(join(reuse, '.github/CODEOWNERS'), 'utf8').includes(`/CLAUDE.md                ${OWNER[1]}`));
+  gitIn(reuse, 'add', '-A');
+  gitIn(reuse, 'commit', '-q', '-m', 'adopt');
+  const again = adopt(reuse, '--dry-run');
+  check('dry run after adoption: values come from project.json, nothing to do', again.status === 0 && again.stdout.includes('Nothing to do') && /profile\s+strict\s+project\.json/.test(again.stdout) && /framework\s+nestjs\s+project\.json/.test(again.stdout) && /repo-owner\s+@fixture-org\/svc-team\s+project\.json/.test(again.stdout) && /with-docs\s+on\s+project\.json/.test(again.stdout), again.stdout + again.stderr);
+  const commandsBefore = JSON.parse(readFileSync(join(reuse, '.claude/project.json'), 'utf8')).commands;
+  const override = adopt(reuse, '--profile', 'standard', '--framework', 'express', '--dry-run');
+  check('dry run: a flag overrides project.json and says so', /profile\s+standard\s+flag/.test(override.stdout) && /framework\s+express\s+flag/.test(override.stdout) && /databases\s+mysql\s+project\.json/.test(override.stdout), override.stdout);
+  check('dry run: the override plan changes project.json and removes the deselected fragment', override.stdout.includes('modify   .claude/project.json') && override.stdout.includes('delete   .claude/rules/std/fragments/framework-nestjs.md') && override.stdout.includes('create   .claude/rules/std/fragments/framework-express.md'), override.stdout);
+  const applied = adopt(reuse, '--profile', 'standard', '--framework', 'express', '--yes');
+  const reused = JSON.parse(readFileSync(join(reuse, '.claude/project.json'), 'utf8'));
+  check('adopt --yes: override stored, other project.json values kept', applied.status === 0 && reused.profile === 'standard' && reused.stack.framework === 'express' && same(reused.commands, commandsBefore) && reused.repoOwner === OWNER[1], applied.stdout + applied.stderr);
+  check('adopt --yes: settings follow the overridden profile', JSON.parse(readFileSync(join(reuse, '.claude/settings.json'), 'utf8')).permissions.ask.includes('Bash(git commit *)') && !existsSync(join(reuse, '.claude/rules/std/fragments/framework-nestjs.md')));
+  check('adopt --yes: std-check passes after the override', compose(reuse, '--check').status === 0, compose(reuse, '--check').stderr);
+  gitIn(reuse, 'add', '-A');
+  gitIn(reuse, 'commit', '-q', '-m', 'override');
+  check('dry run: the stored override is reused without the flag', /profile\s+standard\s+project\.json/.test(adopt(reuse, '--dry-run').stdout) && adopt(reuse, '--dry-run').stdout.includes('Nothing to do'));
+
+  const coText = readFileSync(join(reuse, '.github/CODEOWNERS'), 'utf8');
+  const reusedProject = { ...reused, repoOwner: '@fixture-org/new-team' };
+  writeFileSync(join(reuse, '.claude/project.json'), `${JSON.stringify(reusedProject, null, 2)}\n`);
+  writeFileSync(join(reuse, '.github/CODEOWNERS'), coText.replace('# ---- Team AI standard block', '/infra/  @fixture-org/ops\n\n# ---- Team AI standard block'));
+  const ownerSync = run('node', [SYNC, '--target', reuse]);
+  const coSynced = readFileSync(join(reuse, '.github/CODEOWNERS'), 'utf8');
+  check('sync: regenerates the CODEOWNERS block from repoOwner in project.json', ownerSync.status === 0 && blockOf(coSynced) === codeownersBlock('@fixture-org/new-team') && coSynced.includes('/infra/  @fixture-org/ops'), ownerSync.stdout + ownerSync.stderr);
+  check('sync: keeps the optional groups stored in project.json', existsSync(join(reuse, 'scripts/generate-docs.mjs')) && existsSync(join(reuse, '.github/workflows/docs-check.yml')));
+
   // 2k. the real standard (not a fixture) adopts and syncs when its CODEOWNERS names a real owner
   const liveBlock = blockOf(readFileSync(join(T, '.github/CODEOWNERS'), 'utf8'));
   if (PLACEHOLDER_RE.test(liveBlock)) {
@@ -438,7 +484,7 @@ try {
     const liveAdopt = run('node', [join(ROOT, 'scripts/adopt.mjs'), '--stack', 'nestjs-mysql', ...OWNER, '--yes'], { cwd: live });
     const liveSync = run('node', [join(ROOT, 'scripts/sync-standard.mjs'), '--target', live]);
     const liveCo = readFileSync(join(live, '.github/CODEOWNERS'), 'utf8');
-    check('real standard: adopt and sync succeed with a real CODEOWNERS owner', liveAdopt.status === 0 && liveSync.status === 0 && blockOf(liveCo) === liveBlock, liveAdopt.stderr + liveSync.stderr);
+    check('real standard: adopt and sync succeed with a real CODEOWNERS owner', liveAdopt.status === 0 && liveSync.status === 0 && blockOf(liveCo) === codeownersBlock(OWNER[1]), liveAdopt.stderr + liveSync.stderr);
   }
 
   // 3. hooks (run from a directory whose package.json is an ES module)

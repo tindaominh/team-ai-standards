@@ -28,6 +28,49 @@ node ../team-ai-standards/scripts/adopt.mjs --profile strict --yes
 
 The script detects the stack from `package.json` (framework, databases, data access, AWS) and shows it; correct it with `--framework`, `--db`, `--data-access`, `--with` (or a shortcut such as `--stack nestjs-mysql`). Profiles: `strict` (client repositories, default) or `standard` (internal only). `--dry-run` writes nothing and prints every change, with diffs and a plan hash; `--yes` applies exactly that plan, on a clean branch. Existing files are merged, not overwritten: `CLAUDE.md` gets `std:` blocks, the PR template and `CODEOWNERS` get a block at the end, and stricter rules from an existing `settings.json` move into `.claude/project.json`. Anything that needs a person (for example `--repo-owner`) is listed under "Decisions required" (details in the quickstart).
 
+### Adoption options
+
+Adoption is two commands with the same options. `--dry-run` writes nothing: it shows every file to create, diffs of the files to change, permission changes, the source of each value (flag, `.claude/project.json`, detected or default), the decisions required and a plan hash. `--yes` applies exactly that plan. Configuration choices are stored in `.claude/project.json`, so later runs and update pull requests reuse them; a flag given later overrides the stored value. Run options (`--dry-run`, `--yes`, `--plan` and the others marked "not stored") are never stored. The table is generated from `scripts/lib/adopt-options.mjs` (`npm run docs:readme`); `node scripts/adopt.mjs --help` prints the same list.
+
+<!-- AUTO-GENERATED:adopt-options START -->
+
+| Option | Values | Default | Persisted in | Description |
+| --- | --- | --- | --- | --- |
+| `--profile` | `strict \| standard` | `strict` | `.claude/project.json` → `profile` | Settings profile: `strict` for client repositories, `standard` for internal repositories only. |
+| `--framework` | `nestjs \| express \| none` | detected from `package.json` | `.claude/project.json` → `stack.framework` | Web framework. `none`: a service without a web framework (worker, consumer). |
+| `--db` | `mysql \| postgres` | detected from `package.json` | `.claude/project.json` → `stack.databases` | Databases, one or more (repeat the option or separate with commas). |
+| `--data-access` | `typeorm \| raw \| none` | detected from `package.json` | `.claude/project.json` → `stack.dataAccess` | Data-access library. `raw`: a driver without an ORM; `none`: no database. |
+| `--with` | `aws` | detected (dependencies, `infra/` folders) | `.claude/project.json` → `stack.optional` | Optional fragments to install. |
+| `--without-optional` | — | off | `.claude/project.json` → `stack.optional` (empty) | Install no optional fragment, even if one is detected. |
+| `--stack` | `nestjs-mysql \| nestjs-postgres \| node-postgres` | none | `.claude/project.json` → `stack` (expanded) | Shortcut that sets every stack dimension; the options above override it. |
+| `--with-docs` | — | off | `.claude/project.json` → `optionalGroups` | Also install the documentation checks (doc 09); updates keep them current. |
+| `--repo-owner` | `@user \| @org/team` | none (required when there is no `CODEOWNERS`) | `.claude/project.json` → `repoOwner`; `CODEOWNERS` standard block | Owner of the project files (`CLAUDE.md`, `.claude/project.json`, `.claude/rules/local/`). |
+| `--carry-allow` | — | off (decision required) | `.claude/project.json` → `permissions.allow` (the rules) | Keep `allow` rules from an existing `settings.json` that the profile does not grant. |
+| `--drop-allow` | — | off (decision required) | not stored (the rules are dropped) | Drop those `allow` rules instead. |
+| `--propose-unresolved` | — | off | not stored | For files that cannot be merged, write `<file>.proposed` and a checklist instead of stopping. |
+| `--dry-run` | — | off | not stored | Show the plan, the value sources and the plan hash; write nothing. |
+| `--yes` | — | off | not stored | Apply the plan reviewed with `--dry-run`; stop if it changed. |
+| `--plan` | `<hash>` | the plan recorded by `--dry-run` | not stored | With `--yes`: require this plan hash. |
+| `--target` | `<dir>` | current directory | not stored | Repository to adopt. |
+| `--help` | — | off | not stored | Print this list and exit. |
+
+<!-- AUTO-GENERATED:adopt-options END -->
+
+Examples:
+
+```bash
+# New repository: detected stack, project owner for CODEOWNERS
+node ../team-ai-standards/scripts/adopt.mjs --profile strict --repo-owner @acme/orders-team --dry-run
+node ../team-ai-standards/scripts/adopt.mjs --profile strict --repo-owner @acme/orders-team --yes
+
+# Existing repository (its own CLAUDE.md, settings, CODEOWNERS): on a new branch with a clean tree
+git switch -c chore/adopt-ai-standard
+node ../team-ai-standards/scripts/adopt.mjs --profile strict --repo-owner @acme/orders-team --dry-run
+
+# Explicit stack instead of detection
+node ../team-ai-standards/scripts/adopt.mjs --profile standard --framework express --db mysql,postgres --data-access raw --with aws --repo-owner @acme/platform --dry-run
+```
+
 ### Three layers in a project repository
 
 | Layer | What | Who changes it |
@@ -58,7 +101,7 @@ Details: `docs/en/10-versioning-and-distribution.md`.
 | `templates/` | Layer 1 files exactly as a project repository receives them, the `CLAUDE.md` skeleton, and `fragments/` (composable stack fragments and their registry) |
 | `scripts/adopt.mjs` | Adoption script, run from a project repository |
 | `scripts/sync-standard.mjs` | Writes Layer 1 files for an update PR |
-| `scripts/` (other) | Checks for this repository: parity, budget per stack, JSON, settings generator, audit exceptions, smoke tests |
+| `scripts/` (other) | Checks for this repository: parity, budget per stack, JSON, settings generator, README option tables, audit exceptions, smoke tests |
 | `.github/workflows/` | CI for this repository and the release update job |
 | `audit-exceptions.json` | Accepted npm audit advisories for this repository's dev tools |
 | `CHANGELOG.md` | Release history |
@@ -93,6 +136,49 @@ node ../team-ai-standards/scripts/adopt.mjs --profile strict --yes
 
 Script tự nhận diện stack từ `package.json` (framework, database, data access, AWS) và in ra; sửa lại bằng `--framework`, `--db`, `--data-access`, `--with` (hoặc lối tắt như `--stack nestjs-mysql`). Profile: `strict` (repo khách hàng, mặc định) hoặc `standard` (chỉ repo nội bộ). `--dry-run` không ghi gì và in ra mọi thay đổi, kèm diff và plan hash; `--yes` áp dụng đúng plan đó, trên một branch sạch. File đã có được gộp chứ không bị ghi đè: `CLAUDE.md` có thêm các khối `std:`, PR template và `CODEOWNERS` có thêm một khối ở cuối, các rule chặt hơn trong `settings.json` đang có được chuyển vào `.claude/project.json`. Những gì cần con người quyết định (ví dụ `--repo-owner`) được liệt kê trong "Decisions required" (chi tiết trong quickstart).
 
+### Tuỳ chọn của adopt.mjs
+
+Áp dụng gồm hai lệnh với cùng các tuỳ chọn. `--dry-run` không ghi gì: in ra mọi file sẽ tạo, diff của các file sẽ sửa, thay đổi về permission, nguồn của từng giá trị (flag, `.claude/project.json`, detect hoặc mặc định), các quyết định cần đưa ra và một plan hash. `--yes` áp dụng đúng plan đó. Các lựa chọn cấu hình được lưu trong `.claude/project.json`, nên các lần chạy sau và các pull request cập nhật dùng lại chúng; flag truyền ở lần sau sẽ ghi đè giá trị đã lưu. Các tuỳ chọn điều khiển lần chạy (`--dry-run`, `--yes`, `--plan` và các tuỳ chọn ghi "không lưu") không bao giờ được lưu. Bảng được sinh từ `scripts/lib/adopt-options.mjs` (`npm run docs:readme`); `node scripts/adopt.mjs --help` in ra cùng danh sách.
+
+<!-- AUTO-GENERATED:adopt-options-vi START -->
+
+| Tuỳ chọn | Giá trị | Mặc định | Lưu ở | Mô tả |
+| --- | --- | --- | --- | --- |
+| `--profile` | `strict \| standard` | `strict` | `.claude/project.json` → `profile` | Profile settings: `strict` cho repo khách hàng, `standard` chỉ cho repo nội bộ. |
+| `--framework` | `nestjs \| express \| none` | detect từ `package.json` | `.claude/project.json` → `stack.framework` | Web framework. `none`: service không có web framework (worker, consumer). |
+| `--db` | `mysql \| postgres` | detect từ `package.json` | `.claude/project.json` → `stack.databases` | Database, một hoặc nhiều (lặp lại option hoặc ngăn cách bằng dấu phẩy). |
+| `--data-access` | `typeorm \| raw \| none` | detect từ `package.json` | `.claude/project.json` → `stack.dataAccess` | Thư viện data access. `raw`: driver không có ORM; `none`: không có database. |
+| `--with` | `aws` | detect (dependency, thư mục `infra/`) | `.claude/project.json` → `stack.optional` | Các fragment tuỳ chọn cần cài. |
+| `--without-optional` | — | tắt | `.claude/project.json` → `stack.optional` (rỗng) | Không cài fragment tuỳ chọn nào, kể cả khi detect được. |
+| `--stack` | `nestjs-mysql \| nestjs-postgres \| node-postgres` | không có | `.claude/project.json` → `stack` (đã khai triển) | Lối tắt đặt mọi chiều của stack; các option ở trên ghi đè lên nó. |
+| `--with-docs` | — | tắt | `.claude/project.json` → `optionalGroups` | Cài thêm các kiểm tra tài liệu (tài liệu 09); bản cập nhật giữ chúng mới. |
+| `--repo-owner` | `@user \| @org/team` | không có (bắt buộc khi chưa có `CODEOWNERS`) | `.claude/project.json` → `repoOwner`; khối standard trong `CODEOWNERS` | Owner của các file dự án (`CLAUDE.md`, `.claude/project.json`, `.claude/rules/local/`). |
+| `--carry-allow` | — | tắt (cần quyết định) | `.claude/project.json` → `permissions.allow` (các rule) | Giữ các rule `allow` trong `settings.json` đang có mà profile không cấp. |
+| `--drop-allow` | — | tắt (cần quyết định) | không lưu (các rule bị bỏ) | Bỏ các rule `allow` đó. |
+| `--propose-unresolved` | — | tắt | không lưu | Với file không gộp được, ghi `<file>.proposed` và một checklist thay vì dừng. |
+| `--dry-run` | — | tắt | không lưu | In plan, nguồn của từng giá trị và plan hash; không ghi gì. |
+| `--yes` | — | tắt | không lưu | Áp dụng plan đã xem bằng `--dry-run`; dừng nếu plan đã thay đổi. |
+| `--plan` | `<hash>` | plan được `--dry-run` lưu lại | không lưu | Dùng với `--yes`: yêu cầu đúng plan hash này. |
+| `--target` | `<dir>` | thư mục hiện tại | không lưu | Repository cần áp dụng. |
+| `--help` | — | tắt | không lưu | In danh sách này rồi thoát. |
+
+<!-- AUTO-GENERATED:adopt-options-vi END -->
+
+Ví dụ:
+
+```bash
+# Repo mới: stack được detect, owner của dự án cho CODEOWNERS
+node ../team-ai-standards/scripts/adopt.mjs --profile strict --repo-owner @acme/orders-team --dry-run
+node ../team-ai-standards/scripts/adopt.mjs --profile strict --repo-owner @acme/orders-team --yes
+
+# Repo đã có CLAUDE.md, settings, CODEOWNERS riêng: trên một branch mới, working tree sạch
+git switch -c chore/adopt-ai-standard
+node ../team-ai-standards/scripts/adopt.mjs --profile strict --repo-owner @acme/orders-team --dry-run
+
+# Chọn stack rõ ràng thay vì detect
+node ../team-ai-standards/scripts/adopt.mjs --profile standard --framework express --db mysql,postgres --data-access raw --with aws --repo-owner @acme/platform --dry-run
+```
+
 ### Ba lớp trong một repo dự án
 
 | Lớp | Gồm những gì | Ai được thay đổi |
@@ -123,7 +209,7 @@ Chi tiết: `docs/vi/10-versioning-and-distribution.md`.
 | `templates/` | File lớp 1 đúng như repo dự án nhận được, khung `CLAUDE.md`, và `fragments/` (các stack fragment ghép được và registry của chúng) |
 | `scripts/adopt.mjs` | Script áp dụng, chạy từ repo dự án |
 | `scripts/sync-standard.mjs` | Ghi các file lớp 1 cho PR cập nhật |
-| `scripts/` (còn lại) | Công cụ kiểm tra cho repo này: parity, budget theo từng stack, JSON, sinh settings, ngoại lệ audit, smoke test |
+| `scripts/` (còn lại) | Công cụ kiểm tra cho repo này: parity, budget theo từng stack, JSON, sinh settings, bảng tuỳ chọn trong README, ngoại lệ audit, smoke test |
 | `.github/workflows/` | CI của repo này và job cập nhật khi phát hành |
 | `audit-exceptions.json` | Các cảnh báo npm audit đã chấp nhận cho công cụ dev của repo này |
 | `CHANGELOG.md` | Lịch sử phát hành |

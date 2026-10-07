@@ -19,12 +19,18 @@ Adoption becomes two commands with no manual merging in the normal case: `adopt.
 - `scripts/sync-standard.mjs` replaces the inside of the `std:` blocks in `CLAUDE.md` and of an appended PR-template block; text outside them stays byte for byte. The "Action required: regenerate the command table" step of update PRs is no longer needed and is removed.
 - Docs 00 and 10, README and the Vietnamese file guide (English and Vietnamese) describe the two-command flow, what is automatic, what stops for a decision, the `std:` blocks and how to undo with git.
 
+- Adoption options are declared once, in `scripts/lib/adopt-options.mjs` (name, values, default, where the value is stored, English and Vietnamese description). The argument parser, `adopt.mjs --help` and the README tables are built from it. Unknown options are now rejected.
+- Configuration is stored and reused: `.claude/project.json` gains `repoOwner` (also rendered into the `CODEOWNERS` standard block, so update pull requests regenerate it) and `optionalGroups` (for example `["docs"]`; update pull requests use it, falling back to the manifest for repositories adopted earlier). On a later run each value comes from a flag, then `project.json`, then detection, then the default; `--dry-run` prints the source of each. A run on an adopted repository changes only what a flag overrides (instead of stopping with "already adopted"), and needs the repository to be on the same version of the standard.
+- The `CODEOWNERS` template's project part keeps only `/docs/` and `/README.md`; the lines for `CLAUDE.md`, `.claude/project.json` and `.claude/rules/local/` are generated in the standard block from `repoOwner`.
+
 ### Fixed
 
 - `npm run check:budget` counted `templates/CLAUDE.md` with an empty command table, so the always-loaded figure was about 150 words too low. It now renders the `std:` blocks with every command set: about 1,780 words always loaded and 2,290 for the largest combination (limit 2,300).
 
 ### Added
 
+- README section "Adoption options" (English) and "Tuỳ chọn của adopt.mjs" (Vietnamese): the two-command flow, a table generated between `AUTO-GENERATED:adopt-options` markers, and three examples; the quickstart links to it. `npm run docs:readme` regenerates the tables; `npm run check:readme` (part of `npm run check` and `standard-ci`) fails when they are stale and prints the command.
+- Smoke tests for the options: `--help` matches the list, unknown options are rejected, both README tables match, a stale table fails, `repoOwner` and `optionalGroups` are stored and reused by sync, a flag overrides `project.json` (profile and framework, with the deselected fragment removed), and `--dry-run` shows the value sources.
 - Smoke tests for the new adoption flow: fresh repository and missing `--repo-owner`; existing `CLAUDE.md` with a duplicate "Commands" section; existing settings with a project deny (carried over), a conflicting allow (dropped and reported), an allow needing a decision, and an unparseable file (fallback proposals); plan hash mismatch after editing `CLAUDE.md`; dirty working tree and default-branch refusals; idempotency; sync touching only `std:` blocks.
 
 ## [0.4.0] - 2026-10-07
