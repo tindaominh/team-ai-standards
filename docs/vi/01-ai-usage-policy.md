@@ -9,7 +9,7 @@ Chính sách này quy định những công cụ AI nào được dùng, dữ li
 Chỉ những công cụ có trong bảng này mới được dùng cho công việc của công ty hoặc của khách hàng. Trạng thái của một công cụ chỉ thay đổi sau khi team lead và security owner phê duyệt chính thức. Việc phê duyệt được ghi lại tại đây, kèm tên người duyệt và ngày duyệt.
 
 | Công cụ | Trạng thái | Người duyệt | Ngày | Dữ liệu được phép | Ghi chú |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | Claude Code | Under evaluation (Đang đánh giá) | | | Repository nội bộ trong Wave 1 (xem 08) | Trạng thái chỉ thay đổi sau khi team lead / security owner phê duyệt chính thức. |
 | `<tool>` | `<status>` | | | | |
 
@@ -29,7 +29,7 @@ Quy tắc:
 ## Phân loại dữ liệu
 
 | Loại | Ví dụ | Có được gửi vào công cụ AI đã duyệt không? |
-|---|---|---|
+| --- | --- | --- |
 | **Public (Công khai)** | Code open-source, tài liệu công khai, tài liệu API công khai của marketplace | Có |
 | **Internal (Nội bộ)** | Code service nội bộ của team, tài liệu nội bộ, dữ liệu test giả lập | Có, với công cụ đã duyệt |
 | **Client confidential (Mật của khách hàng)** | Source code của khách hàng, kiến trúc hệ thống của khách hàng, business rule của khách hàng | Chỉ khi khách hàng cho phép bằng văn bản và repository nằm trong danh sách được phép. Nếu không thì không. |

@@ -12,7 +12,7 @@ Ticket → Plan → Failing test → Implement → Verify → Fresh-context revi
 ```
 
 | Step | Who leads | AI help | Output |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 1. Understand the ticket | Developer | Summarise, list questions | Clear acceptance criteria in Backlog |
 | 2. Plan | Developer | `plan` skill, `planner` subagent | Approved plan file |
 | 3. Failing test | Developer + AI | `tdd-workflow` skill | Test that fails for the right reason |
@@ -99,7 +99,7 @@ A change is done when all of the following are true:
 Each PR description contains:
 
 | Evidence | Where it comes from | Required when |
-|---|---|---|
+| --- | --- | --- |
 | Plan link or "not needed: reason" | `plan` skill | Always |
 | Failing test (command + key lines) | `tdd-workflow` | Behaviour changes |
 | Passing test (same command) | `tdd-workflow` | Behaviour changes |

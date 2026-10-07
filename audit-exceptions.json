@@ -1,0 +1,35 @@
+{
+  "description": "Accepted npm audit advisories for this repository. Checked by scripts/check-audit-exceptions.mjs in CI: any advisory not listed here, or any entry past its review date, fails the build.",
+  "exceptions": [
+    {
+      "advisory": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces@3.0.3",
+      "severity": "high",
+      "path": "markdownlint-cli2 > globby > fast-glob > micromatch > braces",
+      "reason": "Dev-only tool. markdownlint-cli2 only reads this repository's own Markdown with a fixed glob from .markdownlint-cli2.jsonc; it is never shipped and never run against untrusted input. The only offered fix is a downgrade of markdownlint-cli2.",
+      "acceptedBy": "<owner of the standard>",
+      "acceptedOn": "2026-10-07",
+      "reviewBy": "2027-01-07"
+    },
+    {
+      "advisory": "GHSA-r4xh-jqrq-34v2",
+      "package": "smol-toml@1.8.0",
+      "severity": "moderate",
+      "path": "markdownlint-cli2 > smol-toml",
+      "reason": "Dev-only tool. This repository has no TOML configuration; the parser never receives untrusted input. Not shipped.",
+      "acceptedBy": "<owner of the standard>",
+      "acceptedOn": "2026-10-07",
+      "reviewBy": "2027-01-07"
+    },
+    {
+      "advisory": "GHSA-238p-pmpm-9mq7",
+      "package": "katex@0.16.47",
+      "severity": "low",
+      "path": "markdownlint-cli2 > markdownlint > micromark-extension-math > katex",
+      "reason": "Dev-only tool. Math rendering is not used; lint output is never rendered in a browser. Not shipped.",
+      "acceptedBy": "<owner of the standard>",
+      "acceptedOn": "2026-10-07",
+      "reviewBy": "2027-01-07"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+# Owners of shared documentation and AI configuration.
+# Replace the placeholders with GitHub teams or users, and enable
+# "Require review from Code Owners" in the branch protection of the base branch.
+
+# Documentation
+/docs/                  @<org>/<docs-owners>
+/README.md              @<org>/<docs-owners>
+
+# AI configuration: changes affect every session in this repository
+/CLAUDE.md              @<org>/<standard-owners>
+/.claude/               @<org>/<standard-owners>
+
+# CI, including the docs checks
+/.github/workflows/     @<org>/<standard-owners>
+/scripts/generate-docs.mjs        @<org>/<standard-owners>
+/scripts/check-docs-updated.mjs   @<org>/<standard-owners>

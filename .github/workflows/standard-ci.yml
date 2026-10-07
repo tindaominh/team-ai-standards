@@ -1,0 +1,75 @@
+# CI for the team standard itself: Markdown lint, JSON validity, settings
+# templates in sync with their generator, bilingual parity, context budget,
+# and a smoke test of the scripts shipped in templates/.
+name: standard-ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: standard-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Install dev dependencies (pinned, no install scripts)
+        run: npm ci --ignore-scripts
+
+      - name: Markdown lint
+        run: npm run lint:md
+
+      - name: JSON validity
+        run: npm run check:json
+
+      - name: Settings templates match their generator
+        run: npm run check:settings
+
+      - name: Bilingual parity (docs/en vs docs/vi)
+        run: npm run check:parity
+
+      - name: Context budget
+        run: npm run check:budget
+
+      - name: Smoke test of template scripts and hooks
+        run: npm run test:scripts
+
+      - name: npm audit against accepted exceptions (audit-exceptions.json)
+        run: npm run check:audit
+
+      # actionlint: checksum from the release's published checksums file.
+      # shellcheck: the release publishes no checksum file; the value below was
+      # computed when the version was pinned (trust on first use).
+      - name: Lint workflows (actionlint + shellcheck, pinned and checksum-verified)
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          SHELLCHECK_VERSION: 0.11.0
+          SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -fsSLo actionlint.tgz "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  actionlint.tgz" | sha256sum -c -
+          tar xzf actionlint.tgz actionlint
+          curl -fsSLo shellcheck.tar.xz "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          echo "${SHELLCHECK_SHA256}  shellcheck.tar.xz" | sha256sum -c -
+          tar xJf shellcheck.tar.xz
+          cd "$GITHUB_WORKSPACE"
+          "$RUNNER_TEMP/actionlint" -shellcheck "$RUNNER_TEMP/shellcheck-v${SHELLCHECK_VERSION}/shellcheck" \
+            .github/workflows/*.yml templates/.github/workflows/*.yml

@@ -7,20 +7,20 @@ Cách đưa bộ tiêu chuẩn này vào team khoảng 10 developer, qua ba wave
 ## Vai trò
 
 | Vai trò | Trách nhiệm | Người phụ trách |
-|---|---|---|
-| **Owner của bộ tiêu chuẩn** | Sở hữu tài liệu và template, quyết định thay đổi, phát hành version, chủ trì retrospective | `<name>` |
-| **Security owner** | Phê duyệt công cụ và repository của khách hàng, xử lý sự cố | `<name>` |
-| **Champion Wave 1** | Dẫn dắt pilot, thu thập chỉ số và phản hồi | `<name>` |
-| **Champion Wave 2** | Hỗ trợ nhóm thứ hai, thu thập chỉ số và phản hồi | `<name>` |
-| **Champion Wave 3** | Hỗ trợ phần còn lại của team | `<name>` |
-| **Tech lead** | Duyệt repository pilot, quyết định khi có xung đột quy trình | `<name>` |
+| --- | --- | --- |
+| **Owner của bộ tiêu chuẩn** | Sở hữu tài liệu và template, quyết định thay đổi, phát hành version, chủ trì retrospective | Xem 03, Danh sách người phụ trách |
+| **Security owner** | Phê duyệt công cụ và repository của khách hàng, xử lý sự cố | Xem 03, Danh sách người phụ trách |
+| **Champion Wave 1** | Dẫn dắt pilot, thu thập chỉ số và phản hồi | Xem 03, Danh sách người phụ trách |
+| **Champion Wave 2** | Hỗ trợ nhóm thứ hai, thu thập chỉ số và phản hồi | Xem 03, Danh sách người phụ trách |
+| **Champion Wave 3** | Hỗ trợ phần còn lại của team | Xem 03, Danh sách người phụ trách |
+| **Tech lead** | Duyệt repository pilot, quyết định khi có xung đột quy trình | Xem 03, Danh sách người phụ trách |
 
 ## Chỉ số
 
 Đo cho từng wave và so với mức nền (baseline) trong 4 tuần trước Wave 1 trên cùng các repository.
 
 | Chỉ số | Định nghĩa | Nguồn |
-|---|---|---|
+| --- | --- | --- |
 | **Lead time** | Ticket chuyển sang "In progress" → PR được merge | Backlog + GitHub |
 | **Lỗi sau merge** | Bug truy được về một PR đã merge trong vòng 30 ngày, tính trên 10 PR | Backlog (ticket bug gắn với PR) |
 | **Thời gian review** | PR mở → lần review đầu tiên của người; và PR mở → được approve | GitHub |
@@ -39,7 +39,7 @@ Mục tiêu được đặt vào cuối Wave 1, dựa trên số liệu của wa
 
 - [ ] Đã chọn repository pilot và được tech lead duyệt.
 - [ ] Đã thu thập chỉ số baseline.
-- [ ] Repository đã cài bộ tiêu chuẩn: CLAUDE.md, settings profile `standard`, rule, agent, skill, PR template.
+- [ ] Repository đã cài bộ tiêu chuẩn: CLAUDE.md với bảng lệnh đã điền, settings profile `standard` với các placeholder lệnh đã được thay, `.claude/STANDARD_VERSION`, rule, agent, skill, PR template.
 - [ ] Claude Code có trong bảng công cụ được phê duyệt với trạng thái "Under evaluation (Đang đánh giá)", ghi rõ repository pilot.
 - [ ] Cả hai người áp dụng sớm đã đọc tài liệu 01–05 và có một buổi walkthrough 1 tiếng với owner của bộ tiêu chuẩn.
 
@@ -48,6 +48,8 @@ Mục tiêu được đặt vào cuối Wave 1, dựa trên số liệu của wa
 - Dùng toàn bộ quy trình (02) cho mọi ticket trong repository pilot.
 - Check-in hằng tuần 30 phút: vấn đề gặp phải, rule chưa rõ, finding sai, lệnh còn thiếu.
 - Ghi mọi thay đổi cần cho rule hoặc template vào danh sách phản hồi.
+- Đánh giá sandbox của Claude Code trên repository pilot như một lớp kiểm soát bổ sung ở mức hệ điều hành (05). Ghi kết quả để đưa vào retrospective của Wave 1.
+- Thử workflow docs-check và các phần tài liệu được sinh tự động (09) trên repository pilot.
 
 **Tiêu chí kết thúc:**
 
@@ -99,6 +101,7 @@ Mục tiêu được đặt vào cuối Wave 1, dựa trên số liệu của wa
 **Hoạt động:**
 
 - Cài bộ tiêu chuẩn vào từng repository được phép. Mỗi repository một PR, review như code.
+- Từ đó trở đi, các repository nhận version mới qua các PR cập nhật được mô tả trong tài liệu 10.
 - Các champion sẵn sàng trả lời câu hỏi; họp đồng bộ hằng tháng.
 
 **Tiêu chí kết thúc (cuối quý đầu tiên):**
@@ -110,7 +113,7 @@ Mục tiêu được đặt vào cuối Wave 1, dựa trên số liệu của wa
 ## Đào tạo
 
 | Buổi | Thời lượng | Đối tượng | Nội dung |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 1. Chính sách và bảo mật | 60 phút | Mọi người, trước lần dùng đầu tiên | Tài liệu 01, 05: phân loại dữ liệu, những gì không bao giờ đưa cho AI, permission profile, sự cố |
 | 2. Thực hành quy trình | 90 phút | Mỗi wave | Tài liệu 02 trên một ticket thật: plan, test fail trước, verify, review với context mới, bằng chứng trong PR |
 | 3. Review PR có AI hỗ trợ | 45 phút | Tất cả reviewer | Tài liệu 04, kèm ví dụ về test yếu và finding quá tự tin |
@@ -127,11 +130,6 @@ Tài liệu và bản ghi hình được lưu cùng bộ tiêu chuẩn.
 
 ## Chu kỳ rà soát và đánh version
 
-- Bộ tiêu chuẩn dùng semantic versioning: `MAJOR.MINOR.PATCH`.
-  - MAJOR: thay đổi quy trình hoặc chính sách mà mọi người phải hành động theo.
-  - MINOR: rule, skill hoặc template mới.
-  - PATCH: sửa câu chữ và lỗi nhỏ.
-- CLAUDE.md của mỗi repository ghi version đang dùng.
+- Cách đánh version, phát hành và cách các repository cập nhật được quy định trong 10-versioning-and-distribution.
 - Trong các wave: phát hành sau mỗi buổi retrospective.
 - Sau Wave 3: rà soát toàn bộ tài liệu hằng quý, và rà soát ngay sau mọi sự cố bảo mật hoặc thay đổi lớn về công cụ.
-- CHANGELOG.md ghi lại mọi lần phát hành.

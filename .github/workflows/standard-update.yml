@@ -1,0 +1,181 @@
+# Opens one update pull request per project repository when a new version of
+# the team standard is released (tag vX.Y.Z). Never pushes to a default branch:
+# each repository's owner reviews and merges the PR. Then announces the release
+# in the team chat. See docs/en/10-versioning-and-distribution.md.
+#
+# Configuration:
+#   .github/standard-targets.json   list of target repositories (empty = no-op)
+#   Token (the security owner decides which one is used):
+#     recommended: GitHub App
+#       variable STANDARD_APP_CLIENT_ID, secret STANDARD_APP_PRIVATE_KEY
+#       (installed only on the target repositories; contents + pull requests: write)
+#     fallback: secret STANDARD_UPDATE_TOKEN (fine-grained token, same scope)
+#   Chat: variable CHAT_PROVIDER = slack (default) | teams,
+#         secret SLACK_WEBHOOK_URL or TEAMS_WEBHOOK_URL
+name: standard-update
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: standard-update
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      targets: ${{ steps.read.outputs.targets }}
+      count: ${{ steps.read.outputs.count }}
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read version and targets
+        id: read
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version=$(tr -d '[:space:]' < templates/.claude/STANDARD_VERSION)
+          pkg=$(node -p "require('./package.json').version")
+          if [ "$version" != "$pkg" ]; then echo "::error::STANDARD_VERSION ($version) != package.json ($pkg)"; exit 1; fi
+          if [ "$REF_TYPE" = "tag" ] && [ "$REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $REF_NAME does not match version $version"; exit 1
+          fi
+          targets=$(node -e "const t=require('./.github/standard-targets.json').targets.filter(x=>x.enabled!==false);process.stdout.write(JSON.stringify(t))")
+          count=$(node -e "process.stdout.write(String(JSON.parse(process.argv[1]).length))" "$targets")
+          {
+            echo "targets=$targets"
+            echo "count=$count"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
+
+  update:
+    needs: plan
+    if: needs.plan.outputs.count != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        target: ${{ fromJSON(needs.plan.outputs.targets) }}
+    steps:
+      - name: Split owner and repository name
+        id: repo
+        env:
+          FULL: ${{ matrix.target.repo }}
+        run: |
+          set -euo pipefail
+          {
+            echo "owner=${FULL%%/*}"
+            echo "name=${FULL#*/}"
+          } >> "$GITHUB_OUTPUT"
+
+      # Recommended: short-lived GitHub App token, scoped to this one repository.
+      - name: GitHub App token
+        id: app-token
+        if: vars.STANDARD_APP_CLIENT_ID != ''
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.STANDARD_APP_CLIENT_ID }}
+          private-key: ${{ secrets.STANDARD_APP_PRIVATE_KEY }}
+          owner: ${{ steps.repo.outputs.owner }}
+          repositories: ${{ steps.repo.outputs.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ matrix.target.repo }}
+          ref: ${{ matrix.target.baseBranch || 'main' }}
+          token: ${{ steps.app-token.outputs.token || secrets.STANDARD_UPDATE_TOKEN }}
+          path: target
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Apply the new version
+        env:
+          PROFILE: ${{ matrix.target.profile }}
+        run: node scripts/sync-standard.mjs --target target --profile "$PROFILE" --summary "$RUNNER_TEMP/summary.md"
+
+      - name: Open update pull request
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.STANDARD_UPDATE_TOKEN }}
+          REPO: ${{ matrix.target.repo }}
+          BASE: ${{ matrix.target.baseBranch || 'main' }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        working-directory: target
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain)" ]; then echo "Already up to date."; exit 0; fi
+          branch="chore/ai-standard-v${VERSION}"
+          git config user.name "ai-standard-bot"
+          git config user.email "ai-standard-bot@users.noreply.github.com"
+          git switch -c "$branch"
+          git add .claude .github/pull_request_template.md
+          git commit -m "chore: update team AI standard to v${VERSION}"
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth}" push origin "$branch"
+          gh pr create --repo "$REPO" --base "$BASE" --head "$branch" \
+            --title "chore: update team AI standard to v${VERSION}" \
+            --body-file "$RUNNER_TEMP/summary.md"
+
+  announce:
+    needs: [plan, update]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Build message
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          TARGETS: ${{ needs.plan.outputs.targets }}
+          UPDATE_RESULT: ${{ needs.update.result }}
+          SERVER: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          repos=$(printf '%s' "$TARGETS" | jq -r '.[].repo' | sed 's/^/- /')
+          printf 'Team AI standard v%s released.\nRelease notes: %s/%s/releases/tag/v%s\nUpdate PRs (branch chore/ai-standard-v%s), status %s:\n%s\n' \
+            "$VERSION" "$SERVER" "$REPO" "$VERSION" "$VERSION" "$UPDATE_RESULT" "${repos:-none}" > "$RUNNER_TEMP/message.txt"
+
+      # Default provider: Slack.
+      - name: Notify Slack
+        if: vars.CHAT_PROVIDER != 'teams'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then echo "::notice::SLACK_WEBHOOK_URL is not set; skipping."; exit 0; fi
+          jq -Rs '{text: .}' "$RUNNER_TEMP/message.txt" \
+            | curl --fail --silent --show-error -X POST -H 'Content-Type: application/json' --data @- "$SLACK_WEBHOOK_URL"
+
+      # Alternative provider: Microsoft Teams (set CHAT_PROVIDER=teams).
+      - name: Notify Microsoft Teams
+        if: vars.CHAT_PROVIDER == 'teams'
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "$TEAMS_WEBHOOK_URL" ]; then echo "::notice::TEAMS_WEBHOOK_URL is not set; skipping."; exit 0; fi
+          jq -Rs '{type: "message", attachments: [{contentType: "application/vnd.microsoft.card.adaptive",
+            content: {type: "AdaptiveCard", version: "1.4", body: [{type: "TextBlock", text: ., wrap: true}]}}]}' "$RUNNER_TEMP/message.txt" \
+            | curl --fail --silent --show-error -X POST -H 'Content-Type: application/json' --data @- "$TEAMS_WEBHOOK_URL"

@@ -12,7 +12,7 @@ Ticket → Plan → Failing test → Implement → Verify → Fresh-context revi
 ```
 
 | Bước | Ai dẫn dắt | AI hỗ trợ | Đầu ra |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 1. Hiểu ticket | Developer | Tóm tắt, liệt kê câu hỏi | Acceptance criteria rõ ràng trên Backlog |
 | 2. Plan | Developer | Skill `plan`, subagent `planner` | File plan đã được duyệt |
 | 3. Test fail trước | Developer + AI | Skill `tdd-workflow` | Test fail đúng lý do |
@@ -99,7 +99,7 @@ Một thay đổi được coi là xong khi tất cả các điều sau đều �
 Mô tả của mỗi PR gồm:
 
 | Bằng chứng | Lấy từ đâu | Bắt buộc khi |
-|---|---|---|
+| --- | --- | --- |
 | Link plan hoặc "not needed: lý do" | Skill `plan` | Luôn luôn |
 | Test fail (lệnh + các dòng chính) | `tdd-workflow` | Thay đổi behaviour |
 | Test pass (cùng lệnh) | `tdd-workflow` | Thay đổi behaviour |

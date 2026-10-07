@@ -7,7 +7,7 @@ Everything the AI loads into its context costs money and attention. A small, foc
 ## What goes where
 
 | Place | Loaded | Put here | Keep out |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `CLAUDE.md` (repository root) | Every session | What the service does, layout, exact commands, architecture in a few lines, repository-specific hard rules, links | Long explanations, tutorials, anything already in rules or skills |
 | `.claude/rules/common/*.md` | Every session | Short, checkable team rules that apply to all work | Procedures and examples (put them in skills) |
 | `.claude/rules/typescript/*.md`, `.claude/rules/common/aws.md` | When matching files are read or edited (`paths:`) | Rules for a file type or area | General rules |
@@ -15,11 +15,14 @@ Everything the AI loads into its context costs money and attention. A small, foc
 | `.claude/agents/*.md` | Description always; body only in the subagent | Roles that need a fresh context and limited tools | Anything the main session needs |
 | `docs/` (this standard, ADRs, runbooks) | Only when someone asks the AI to read them | Explanations for humans | Instructions the AI must always follow |
 
+`common/marketplace-integration.md` is always loaded for now, because most of our work touches channel adapters. If the budget becomes tight after the pilot, it can be path-scoped to the integration folders (for example `src/channels/**`, `src/orders/**`, `src/stock/**`).
+
 ## Size limits
 
 | Item | Limit |
-|---|---|
-| CLAUDE.md + all rules | about 3,000 tokens in total (about 2,300 words) |
+| --- | --- |
+| Always loaded: CLAUDE.md + rules without `paths:` + skill and agent descriptions | 2,300 words (about 3,000 tokens) |
+| Worst case: always loaded + all path-scoped rules (TypeScript, AWS) | 2,300 words |
 | CLAUDE.md alone | 150 lines |
 | One rule file | 60 lines |
 | One skill | 150 lines |
@@ -27,7 +30,7 @@ Everything the AI loads into its context costs money and attention. A small, foc
 | Agent or skill description | 40 words |
 | Skills per repository | 6 from the team set + at most 2 repository-specific |
 
-Measure with `wc -w CLAUDE.md .claude/rules/**/*.md` and multiply by about 1.3 for tokens. The team templates measure about 2,000 words (about 2,600 tokens) before repository-specific content is added.
+In the standard repository, `npm run check:budget` measures the templates and fails if either limit is exceeded; CI runs it on every change. The 0.2.0 templates measure about 1,790 words always loaded and about 2,210 words in the worst case. Rules hold short, checkable statements; code examples belong in skills, which load only when used. In a project repository, measure with `wc -w CLAUDE.md .claude/rules/*/*.md` and multiply by about 1.3 for tokens.
 
 ## Writing good instructions
 
@@ -49,7 +52,7 @@ Measure with `wc -w CLAUDE.md .claude/rules/**/*.md` and multiply by about 1.3 f
 ## Model choice
 
 | Work | Model tier |
-|---|---|
+| --- | --- |
 | Planning and architecture questions, tricky debugging | Most capable model (agent `planner` uses it) |
 | Everyday implementation, tests, reviews | Balanced model (default; reviewers use it) |
 | Simple, repetitive edits, summaries | Smallest model, when available and approved |

@@ -11,7 +11,7 @@ AI assistance: <none | used for planning / tests / implementation / review>
 <!-- Failing run before the change, passing run after. Real output only. -->
 
 | Task | Test | Before (failing) | After (passing) |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | | | | |
 
 Full suite: <command> → <result>
@@ -19,21 +19,23 @@ Known gaps: <none | list>
 
 ## Verification
 
+<!-- Commands come from the Commands table in CLAUDE.md. Write them as run. -->
+
 | Step | Command | Result |
-|---|---|---|
-| Build | `npm run build` | |
-| Typecheck | `npm run typecheck` | |
-| Lint | `npm run lint` | |
-| Unit tests | `npm test` | |
-| Integration tests | `npm run test:integration` | |
-| Migrations | `npm run migration:show` | |
+| --- | --- | --- |
+| Build | | |
+| Typecheck | | |
+| Lint | | |
+| Unit tests | | |
+| Integration tests | | |
+| Migrations | | |
 
 ## AI review
 
 <!-- Fresh-context reviewer results. Delete if AI was not used. -->
 
 | Severity | Found | Confirmed | Fixed | Answered (with reason) |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | CRITICAL | | | | |
 | HIGH | | | | |
 

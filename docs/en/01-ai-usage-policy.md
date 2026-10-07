@@ -9,7 +9,7 @@ This policy says which AI tools we may use, what data may go into them, and who 
 Only tools in this table may be used on company or client work. A tool's status changes only after formal approval by the team lead and the security owner. Approval is recorded here with the approver's name and the date.
 
 | Tool | Status | Approved by | Date | Allowed data | Notes |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | Claude Code | Under evaluation (Đang đánh giá) | | | Internal repositories during Wave 1 (see 08) | Status changes only after formal approval by the team lead / security owner. |
 | `<tool>` | `<status>` | | | | |
 
@@ -29,7 +29,7 @@ Rules:
 ## Data classification
 
 | Class | Examples | May be sent to an approved AI tool? |
-|---|---|---|
+| --- | --- | --- |
 | **Public** | Open-source code, public docs, public marketplace API docs | Yes |
 | **Internal** | Our internal service code, internal docs, synthetic test data | Yes, with approved tools |
 | **Client confidential** | Client source code, client architecture, client business rules | Only if the client allows it in writing and the repository is listed as allowed. Otherwise no. |
