@@ -29,7 +29,7 @@ Rules:
 Every repository has `.claude/settings.json` from the team templates. The profile depends on the repository type:
 
 | Repository type | Profile | File to use | Git writes by AI |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **Client repositories** (any client code) | **strict** (default) | `templates/.claude/settings.json` | None. No add, commit, checkout, stash, push. |
 | **Internal repositories** (our own code, no client data) | **standard** | `templates/.claude/settings.standard.json`, renamed to `settings.json` | Local add/commit/branch with your confirmation. Never push. |
 
@@ -40,25 +40,27 @@ Both profiles deny:
 - Reading or editing `.env*`, key and certificate files, credential files, `secrets/` folders, `~/.aws`, `~/.ssh`, and database dumps.
 - `env` / `printenv`, `aws configure`, reading secret values from Secrets Manager or SSM, reading CloudWatch logs.
 - `git push` (including force), `reset --hard`, `rebase`, `merge`, `clean`, branch deletion with `-D`.
-- Deploy commands, `terraform apply/destroy`, `cdk destroy`.
+- Explicit deploy commands: `npm/pnpm/yarn run deploy*`, `cdk deploy/destroy`, `serverless`/`sls deploy`, `sam deploy`, `copilot … deploy`, `eb deploy`, `terraform apply/destroy`, `aws ecs update-service`, `aws ecs run-task`, `aws cloudformation deploy`, `docker push`.
 - AWS CLI commands that create, update, delete, start, stop, run, tag or copy resources, plus `s3 cp/mv/rm/sync`.
 - Merging, reviewing or releasing through the GitHub CLI.
-- Connecting to databases through the `mysql` CLI or dumping them.
-- Bypass-permissions mode. Project MCP servers are not auto-enabled.
+- Connecting to databases through the `mysql` CLI or dumping them with `mysqldump`. These rules match only commands that start with those programs, so `mysqladmin` or `grep mysql` are not affected.
+- Bypass-permissions mode (`"disableBypassPermissionsMode": "disable"`). Project MCP servers are not auto-enabled.
 
 Both profiles ask before:
 
-- Installing or updating packages, `npx`, `docker`, `curl`, `wget`, any other `aws` or `gh` command, web fetch and web search.
+- Installing or updating packages, `npx`, `docker`, `curl`, `wget`, any other `aws` or `gh` command, generating or running migrations, web fetch and web search.
 
 Both profiles allow without asking:
 
-- Build, typecheck, lint, tests, migration status, `npm audit`, and read-only git commands.
+- The repository's build, lint, typecheck, unit test, integration test and migration-status commands, `npm audit`, and read-only git commands.
+- In the template these appear as placeholders (`<build-cmd>`, `<unit-test-cmd>`, …). Replace them with the commands from the CLAUDE.md command table. An unfilled placeholder matches nothing, so the command just asks.
 
-Limits of permission rules:
+Limits of permission rules (from the official Claude Code documentation, "Configure permissions"):
 
-- Command rules match command text. A determined or tricked agent may find another command that has the same effect. Settings reduce risk; they do not make a sandbox.
-- So: keep real secrets out of the working copy, use local fake values for development, and watch what the AI runs.
-- Rules that mention "deploy" block any command containing that word, including harmless ones (for example a `grep deploy`). Run those yourself.
+- Bash rules match the command text Claude writes. The documentation states that such a rule "covers the invocation Claude usually produces and isn't a security boundary around the program". The same program called by its full path, inside `sh -c`, or from a script is not matched.
+- `Read` and `Edit` deny rules also cover file commands Claude Code recognises in Bash (`cat`, `head`, `tail`, `sed`, `tee`) and redirections. They do **not** cover commands that read files without naming them (for example `grep -r pattern .`) or scripts that open files themselves.
+- Deny rules in `permissions.deny` apply to the main conversation and to subagents.
+- So: keep real secrets out of the working copy, use local fake values for development, and watch what the AI runs. For enforcement at operating-system level, the documentation points to Claude Code's sandbox; evaluating it is part of the Wave 1 pilot (see 08).
 
 Local overrides:
 
@@ -71,7 +73,7 @@ Extensions add instructions, tools or code to your AI sessions. Some run code on
 ### 4.1 Risks to look for
 
 | Risk | What it means | Why it matters for us |
-|---|---|---|
+| --- | --- | --- |
 | **Records tool input/output** | Saves prompts, file contents, command output or diffs to disk (logs, "memory", "learning", analytics) | Client code and customer data end up in places we do not control or clean up |
 | **Sends data off the machine** | Calls remote APIs, telemetry, cloud memory, other AI models, webhooks | Confidential data leaves our boundary |
 | **Runs code on every tool call or session event** | Hooks execute scripts automatically, often with your full user permissions | A bug or a malicious update runs silently on every action |
@@ -111,7 +113,9 @@ Automatic rejection for client repositories: anything that records tool input/ou
 
 ### 4.4 Our own hooks
 
-Our optional hooks (`templates/hooks/`) meet these rules: deterministic, local binaries only, no network, documented reads and writes. Any new hook goes through the same review.
+Team hooks may only **check** or **remind**. A team hook must never write or modify repository files, write shared files (docs, CLAUDE.md, settings), commit or push, call the network, download anything, or send data off the machine. Writing and publishing happen through the developer or through CI on a pull request (see 09).
+
+Our optional hooks (`templates/hooks/`) follow this rule: they are deterministic, run only local binaries in check mode, and document what they read and run. Any new hook goes through the same review.
 
 ## 5. Secret handling
 

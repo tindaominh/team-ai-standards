@@ -1,0 +1,68 @@
+# Posts a short message to the team chat when documentation or AI configuration
+# changes on main (see team standard, 09-docs-automation).
+# The message contains only: repository, commit title, author, changed file
+# paths and a link. No file contents.
+#
+# Configuration (repository or organisation settings):
+#   variable CHAT_PROVIDER   slack (default when unset) | teams
+#   secret   SLACK_WEBHOOK_URL   Slack incoming webhook (default provider)
+#   secret   TEAMS_WEBHOOK_URL   Microsoft Teams workflow webhook (alternative)
+# Webhook URLs come only from GitHub Secrets, never from files in the repository.
+# If the secret for the selected provider is not set, the job does nothing.
+name: docs-notify
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "CLAUDE.md"
+      - ".claude/**"
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Build message
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          TITLE: ${{ github.event.head_commit.message }}
+          SERVER: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+          files=$(gh api "repos/${REPO}/compare/${BEFORE}...${AFTER}" --jq '.files[].filename' \
+            | grep -E '^(docs/|CLAUDE\.md$|\.claude/)' | head -n 20 || true)
+          subject=$(printf '%s' "$TITLE" | head -n 1 | cut -c1-120)
+          printf 'Docs/AI config updated in %s by %s\n%s\n%s\n%s/%s/commit/%s\n' \
+            "$REPO" "$ACTOR" "$subject" "$files" "$SERVER" "$REPO" "$AFTER" > "$RUNNER_TEMP/message.txt"
+
+      # Default provider: Slack.
+      - name: Notify Slack
+        if: vars.CHAT_PROVIDER != 'teams'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then echo "::notice::SLACK_WEBHOOK_URL is not set; skipping."; exit 0; fi
+          jq -Rs '{text: .}' "$RUNNER_TEMP/message.txt" \
+            | curl --fail --silent --show-error -X POST -H 'Content-Type: application/json' --data @- "$SLACK_WEBHOOK_URL"
+
+      # Alternative provider: Microsoft Teams. Disabled unless CHAT_PROVIDER=teams.
+      - name: Notify Microsoft Teams
+        if: vars.CHAT_PROVIDER == 'teams'
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "$TEAMS_WEBHOOK_URL" ]; then echo "::notice::TEAMS_WEBHOOK_URL is not set; skipping."; exit 0; fi
+          jq -Rs '{type: "message", attachments: [{contentType: "application/vnd.microsoft.card.adaptive",
+            content: {type: "AdaptiveCard", version: "1.4", body: [{type: "TextBlock", text: ., wrap: true}]}}]}' "$RUNNER_TEMP/message.txt" \
+            | curl --fail --silent --show-error -X POST -H 'Content-Type: application/json' --data @- "$TEAMS_WEBHOOK_URL"

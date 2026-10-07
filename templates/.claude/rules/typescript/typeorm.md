@@ -3,15 +3,14 @@ paths:
   - "**/*.ts"
 ---
 
-# TypeORM and MySQL
+# NestJS, TypeORM and MySQL
 
-- `synchronize` is `false` in every environment except a throwaway local test DB. Schema changes go through migrations only.
-- Generate migrations with the TypeORM CLI, then read and edit them. Remove unintended DROP/ALTER statements. Every migration has a working `down()` or a note explaining why not.
-- Never edit a migration that has run in any shared environment. Add a new one.
-- Separate schema migrations from data backfills. Backfill in batches (e.g. 1,000 rows) with a resumable script.
-- Large tables: state the expected DDL algorithm and lock (`ALGORITHM=INPLACE, LOCK=NONE` or `INSTANT`) and the metadata-lock risk in the PR. Use the `db-migration-review` skill.
-- Multi-step writes (order conversion, stock reservation) run in one transaction: `dataSource.transaction()` or a `QueryRunner` with commit/rollback in `finally`.
-- Use `update()`/`increment()` or explicit `WHERE` conditions for concurrent counters. Do not `find` + modify + `save` stock quantities.
-- Every list query has a limit (`take`) and stable ordering. Fetch relations explicitly; watch for N+1.
-- Use `SELECT ... FOR UPDATE` (pessimistic lock) or a version column when two workers may update the same row.
-- If the repo uses NestJS: inject repositories with `@InjectRepository`, keep data access in providers, and register entities in the feature module.
+- `synchronize` and `migrationsRun` are `false` outside a throwaway test database.
+- Modules register entities with `TypeOrmModule.forFeature`; providers inject repositories with `@InjectRepository`; controllers never use repositories.
+- Multi-step writes run in one transaction inside a service (`dataSource.transaction` or a `QueryRunner` that is always released). Inside it, use only its manager.
+- Schema changes only through reviewed TypeORM CLI migrations, each with a working `down()` or a stated reason.
+- A migration that reached a shared environment is frozen; fix forward.
+- Migrations run as a one-off task before deploy, never on application start.
+- Counters such as stock: guarded `update`/`increment`, `FOR UPDATE`, or a version column. Never read, modify, then `save`.
+- Every list query has `take` and a stable `order`; relations are loaded explicitly.
+- Migration or entity change: use the `db-migration-review` skill. Test patterns: `tdd-workflow`.

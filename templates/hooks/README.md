@@ -1,22 +1,39 @@
 # Optional hooks
 
-Hooks are **off by default** and **opt-in per repository**. They are deterministic checks that run on your machine. They make no network calls, download nothing, and read nothing outside the project.
+Hooks are **off by default** and **opt-in per repository**.
 
-| Hook | Event | What it does | Can it block? |
-|---|---|---|---|
-| `format-on-edit.js` | PostToolUse on `Edit`, `Write`, `MultiEdit` | Runs `node_modules/.bin/prettier --write <file>` on the edited file if it is inside the project, has a `.ts/.js/.json/.md/.yml/.yaml` extension and is not an `.env*` file. Does nothing if Prettier is not installed locally. | No (always exits 0) |
-| `typecheck-on-stop.js` | Stop | Runs `node_modules/.bin/tsc --noEmit -p tsconfig.json` when Claude finishes a turn. On errors it prints the first 30 lines and exits 2, so Claude continues and fixes them. It runs once per stop cycle (uses `stop_hook_active` to avoid loops). Does nothing if `tsc` or `tsconfig.json` is missing. | Yes, once, on type errors |
+## The rule for team hooks
+
+Team hooks may only **check** or **remind**. A team hook must never:
+
+- write or modify files in the repository (including formatting them),
+- write shared files (docs, CLAUDE.md, settings, anything committed),
+- commit, push or change git state,
+- call the network or download anything,
+- send data off the machine,
+- call an AI model or remote service.
+
+Writing, formatting, committing and publishing happen through the developer, the repository's own scripts, or CI on a pull request. See `docs/en/09-docs-automation.md`.
+
+## Hooks in this folder
+
+| Hook | Event | What it does | Effect on Claude |
+| --- | --- | --- | --- |
+| `format-check-on-edit.cjs` | PostToolUse on `Edit`, `Write`, `MultiEdit` | Runs `node_modules/.bin/prettier --check <file>` on the edited file if it is inside the project, has a `.ts/.js/.json/.md/.yml/.yaml` extension and is not an `.env*` file. Does nothing if Prettier is not installed locally. | If the file is not formatted, adds a reminder next to the tool result (`additionalContext`). Never blocks. |
+| `typecheck-on-stop.cjs` | Stop | Runs `node_modules/.bin/tsc --noEmit -p tsconfig.json` when Claude finishes a turn. Does nothing if `tsc` or `tsconfig.json` is missing. | On type errors, exits 2 with the first 30 lines, so Claude continues and fixes them. Runs once per stop cycle (`stop_hook_active` guard). |
 
 Exactly what each hook touches:
 
-- **Reads:** stdin JSON from Claude Code (`tool_input.file_path`, `cwd`, `stop_hook_active`), and the file paths above.
-- **Writes:** only the edited file, rewritten in place by Prettier.
-- **Executes:** only the two local binaries in `node_modules/.bin`. No `npx`, no shell.
+- **Reads:** stdin JSON from Claude Code (`tool_input.file_path`, `cwd`, `stop_hook_active`) and the edited file or `tsconfig.json`.
+- **Writes:** nothing. The formatter hook prints one JSON line on stdout for Claude Code; both print short messages on stderr.
+- **Executes:** only the local `prettier` or `tsc` binary in `node_modules/.bin`. No `npx`, no shell, no network.
 - **Environment:** reads only `CLAUDE_PROJECT_DIR`.
+
+The files use the `.cjs` extension so they run the same in CommonJS and ES-module projects.
 
 ## Enable in a repository
 
-1. Copy `format-on-edit.js` and `typecheck-on-stop.js` to `<repo>/.claude/hooks/`.
+1. Copy `format-check-on-edit.cjs` and `typecheck-on-stop.cjs` to `<repo>/.claude/hooks/`.
 2. Merge the `hooks` block from `settings.hooks.example.json` into `<repo>/.claude/settings.json`.
 3. Read both scripts before committing them. They are short on purpose.
 4. Mention the change in the PR. Hook changes are reviewed like code.
@@ -27,8 +44,8 @@ Remove the `hooks` block from `.claude/settings.json`. Developers can also turn 
 
 ## Rules for adding new hooks
 
-- Deterministic only. A hook never calls an AI model or a remote service.
-- Uses only tools already installed in the project.
+- Follows "The rule for team hooks" above.
+- Deterministic; uses only tools already installed in the project.
 - Exits 0 on unexpected errors, so a broken hook never blocks work.
 - Under 100 lines, with a header comment saying what it reads, writes and runs.
 - Approved by the owner of the standard before it is added here.

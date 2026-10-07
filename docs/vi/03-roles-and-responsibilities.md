@@ -7,22 +7,35 @@ Tài liệu này xác định ai chịu trách nhiệm phần nào khi công c�
 ## Vai trò
 
 | Vai trò | Ai | Chịu trách nhiệm |
-|---|---|---|
+| --- | --- | --- |
 | **Developer (tác giả)** | Người được giao ticket | Thay đổi từ lúc plan đến lúc merge, kể cả từng dòng do AI viết |
 | **Reviewer** | Một developer khác (hoặc lead) | Đánh giá độc lập về tính đúng đắn, an toàn và mức độ phù hợp |
 | **Trợ lý AI** | Claude Code (và các subagent đã duyệt) | Các đề xuất: plan, test, code, finding khi review. Không có gì AI làm ra là bản cuối nếu chưa qua con người |
-| **Tech lead** | Team lead | Quyết định kiến trúc, ngoại lệ, quyền merge vào branch được bảo vệ |
-| **Security owner** | Người được chỉ định (xem README) | Duyệt công cụ AI, giải đáp về phân loại dữ liệu, xử lý sự cố |
-| **Owner của bộ tiêu chuẩn** | Người được chỉ định (xem 08) | Bộ tiêu chuẩn này, các phiên bản, template và kế hoạch triển khai |
-| **Wave champion** | Mỗi đợt triển khai một người (xem 08) | Hỗ trợ đồng nghiệp, thu thập feedback và số liệu trong một đợt |
-| **Project lead (dự án khách hàng)** | Theo từng khách hàng | Ghi lại quan điểm của khách hàng về AI và các giới hạn của repository |
+| **Tech lead** | Người được chỉ định (xem Danh sách người phụ trách) | Quyết định kiến trúc, ngoại lệ, quyền merge vào branch được bảo vệ |
+| **Security owner** | Người được chỉ định (xem Danh sách người phụ trách) | Duyệt công cụ AI, giải đáp về phân loại dữ liệu, xử lý sự cố |
+| **Owner của bộ tiêu chuẩn** | Người được chỉ định (xem Danh sách người phụ trách) | Bộ tiêu chuẩn này, các phiên bản, template và kế hoạch triển khai |
+| **Wave champion** | Mỗi đợt triển khai một người (xem Danh sách người phụ trách) | Hỗ trợ đồng nghiệp, thu thập feedback và số liệu trong một đợt |
+| **Project lead (dự án khách hàng)** | Theo từng khách hàng, ghi trong trang dự án | Ghi lại quan điểm của khách hàng về AI và các giới hạn của repository |
+
+## Danh sách người phụ trách
+
+Đây là nơi duy nhất ghi tên người. Các tài liệu khác đều tham chiếu tới bảng này. Khi có người đổi vai trò, cập nhật bảng bằng PR.
+
+| Vai trò | Tên | Người dự phòng | Từ ngày |
+| --- | --- | --- | --- |
+| Owner của bộ tiêu chuẩn | `<name>` | `<name>` | `<YYYY-MM-DD>` |
+| Security owner | `<name>` | `<name>` | `<YYYY-MM-DD>` |
+| Tech lead | `<name>` | `<name>` | `<YYYY-MM-DD>` |
+| Wave 1 champion | `<name>` | | `<YYYY-MM-DD>` |
+| Wave 2 champion | `<name>` | | `<YYYY-MM-DD>` |
+| Wave 3 champion | `<name>` | | `<YYYY-MM-DD>` |
 
 ## Ma trận trách nhiệm
 
 R = người làm, A = người chịu trách nhiệm / duyệt, C = được hỏi ý kiến, I = được thông báo.
 
 | Hoạt động | Developer | AI | Reviewer | Tech lead | Security owner |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | Làm rõ ticket và acceptance criteria | R/A | C | | C | |
 | Viết plan | R/A | R | | C (thay đổi lớn) | C (dữ liệu nhạy cảm) |
 | Duyệt plan | A | | | A (thay đổi kiến trúc) | |

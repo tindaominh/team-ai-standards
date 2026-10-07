@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/format-on-edit.js",
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/format-check-on-edit.cjs",
             "timeout": 30
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/typecheck-on-stop.js",
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/typecheck-on-stop.cjs",
             "timeout": 120
           }
         ]

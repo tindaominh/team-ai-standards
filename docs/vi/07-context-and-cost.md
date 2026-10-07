@@ -7,7 +7,7 @@ Mọi thứ AI load vào context đều tốn tiền và tốn sự chú ý. Con
 ## Cái gì đặt ở đâu
 
 | Vị trí | Khi nào được load | Nên đặt ở đây | Không đặt ở đây |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `CLAUDE.md` (gốc repository) | Mọi session | Service làm gì, cấu trúc thư mục, lệnh chính xác, kiến trúc trong vài dòng, rule bắt buộc riêng của repository, link | Giải thích dài, tutorial, những gì đã có trong rule hoặc skill |
 | `.claude/rules/common/*.md` | Mọi session | Rule ngắn, kiểm tra được, áp dụng cho mọi công việc của team | Quy trình và ví dụ (đặt trong skill) |
 | `.claude/rules/typescript/*.md`, `.claude/rules/common/aws.md` | Khi đọc hoặc sửa file khớp (`paths:`) | Rule cho một loại file hoặc một mảng | Rule chung |
@@ -15,11 +15,14 @@ Mọi thứ AI load vào context đều tốn tiền và tốn sự chú ý. Con
 | `.claude/agents/*.md` | Mô tả luôn được load; nội dung chỉ trong subagent | Vai trò cần context mới và tool giới hạn | Những gì session chính cần |
 | `docs/` (bộ tiêu chuẩn này, ADR, runbook) | Chỉ khi có người bảo AI đọc | Giải thích cho người đọc | Chỉ dẫn AI phải luôn tuân theo |
 
+Hiện tại `common/marketplace-integration.md` luôn được load, vì phần lớn công việc của team đụng tới adapter của các kênh bán. Nếu sau pilot ngân sách context bị căng, có thể giới hạn rule này theo đường dẫn tới các thư mục tích hợp (ví dụ `src/channels/**`, `src/orders/**`, `src/stock/**`).
+
 ## Giới hạn kích thước
 
 | Mục | Giới hạn |
-|---|---|
-| CLAUDE.md + toàn bộ rule | tổng khoảng 3.000 token (khoảng 2.300 từ) |
+| --- | --- |
+| Luôn được load: CLAUDE.md + rule không có `paths:` + mô tả của skill và agent | 2.300 từ (khoảng 3.000 token) |
+| Trường hợp xấu nhất: phần luôn được load + mọi rule giới hạn theo đường dẫn (TypeScript, AWS) | 2.300 từ |
 | Riêng CLAUDE.md | 150 dòng |
 | Một file rule | 60 dòng |
 | Một skill | 150 dòng |
@@ -27,7 +30,7 @@ Mọi thứ AI load vào context đều tốn tiền và tốn sự chú ý. Con
 | Mô tả của agent hoặc skill | 40 từ |
 | Số skill mỗi repository | 6 skill của team + tối đa 2 skill riêng của repository |
 
-Đo bằng `wc -w CLAUDE.md .claude/rules/**/*.md` rồi nhân khoảng 1,3 để ra số token. Bộ template của team đo được khoảng 2.000 từ (khoảng 2.600 token) trước khi thêm nội dung riêng của repository.
+Trong repository của bộ tiêu chuẩn, `npm run check:budget` đo bộ template và báo lỗi khi vượt một trong hai giới hạn; CI chạy lệnh này ở mọi thay đổi. Bộ template 0.2.0 đo được khoảng 1.790 từ luôn được load và khoảng 2.210 từ trong trường hợp xấu nhất. Rule chỉ chứa những câu ngắn, kiểm tra được; ví dụ code đặt trong skill, vì skill chỉ được load khi dùng tới. Trong repository dự án, đo bằng `wc -w CLAUDE.md .claude/rules/*/*.md` rồi nhân khoảng 1,3 để ra số token.
 
 ## Viết chỉ dẫn cho tốt
 
@@ -49,7 +52,7 @@ Mọi thứ AI load vào context đều tốn tiền và tốn sự chú ý. Con
 ## Chọn model
 
 | Công việc | Tầng model |
-|---|---|
+| --- | --- |
 | Lập plan và câu hỏi kiến trúc, debug khó | Model mạnh nhất (agent `planner` dùng loại này) |
 | Implement hằng ngày, test, review | Model cân bằng (mặc định; reviewer dùng loại này) |
 | Sửa đơn giản, lặp lại, tóm tắt | Model nhỏ nhất, nếu có và đã được duyệt |

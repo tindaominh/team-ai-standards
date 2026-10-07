@@ -5,12 +5,12 @@ paths:
 
 # TypeScript style
 
-- `strict` mode stays on. No `any`; use `unknown` and narrow it. No `@ts-ignore`; `@ts-expect-error` only with a reason.
+- `strict` stays on. No `any` (use `unknown` and narrow), no `@ts-ignore`.
 - Exported functions and public methods declare parameter and return types.
-- Use `interface` for object shapes and `type` for unions. Prefer string-literal unions or `as const` objects over `enum` in new code, unless the module already uses enums.
-- In `catch (err: unknown)`, narrow before use. Wrap and rethrow domain errors with context (`cause`).
-- Parse external data with a schema (zod or class-validator, whichever the repo uses) and work with the parsed type.
-- Always `await` or return promises. No floating promises. Use `Promise.allSettled` when partial failure is acceptable.
-- Money: integer minor units or a decimal library. Never `number` arithmetic on prices.
-- Dates: store UTC, convert at the edges. Use the repo's date library.
+- `catch (err: unknown)`: narrow before use; rethrow with context (`cause`).
+- HTTP input: class-validator DTOs with the global `ValidationPipe` (`whitelist`, `forbidNonWhitelisted`). Other external data: validate with zod before use.
+- Config: validated at startup by the zod env schema; read only through `ConfigService`.
+- Use NestJS dependency injection; never `new` a service or repository.
+- No floating promises.
+- Money: integer minor units or a decimal library, never float arithmetic. Dates: UTC inside, converted at the edges.
 - Use the repo logger, not `console`.

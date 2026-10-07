@@ -7,22 +7,35 @@ This document defines who owns what when AI tools are part of the work, and who 
 ## Roles
 
 | Role | Who | Owns |
-|---|---|---|
+| --- | --- | --- |
 | **Developer (author)** | The person assigned to the ticket | The change from plan to merge, including every AI-written line |
 | **Reviewer** | Another developer (or the lead) | Independent judgement on correctness, safety and fit |
 | **AI assistant** | Claude Code (and approved subagents) | Proposals: plans, tests, code, review findings. Nothing it produces is final without a human |
-| **Tech lead** | Team lead | Architecture decisions, exceptions, merge rights for protected branches |
-| **Security owner** | Named person (see README) | Approval of AI tools, data classification questions, incident handling |
-| **Owner of the standard** | Named person (see 08) | This standard, its versions, templates and the adoption plan |
-| **Wave champion** | One per adoption wave (see 08) | Helping colleagues, collecting feedback and metrics during a wave |
-| **Project lead (client projects)** | Per client | Recording the client's AI position and repository restrictions |
+| **Tech lead** | Named person (see Named people) | Architecture decisions, exceptions, merge rights for protected branches |
+| **Security owner** | Named person (see Named people) | Approval of AI tools, data classification questions, incident handling |
+| **Owner of the standard** | Named person (see Named people) | This standard, its versions, templates and the adoption plan |
+| **Wave champion** | One per adoption wave (see Named people) | Helping colleagues, collecting feedback and metrics during a wave |
+| **Project lead (client projects)** | Per client, recorded in the project page | Recording the client's AI position and repository restrictions |
+
+## Named people
+
+This is the only place where names are recorded. Other documents refer to this table. Update it by PR when someone changes role.
+
+| Role | Name | Backup | Since |
+| --- | --- | --- | --- |
+| Owner of the standard | `<name>` | `<name>` | `<YYYY-MM-DD>` |
+| Security owner | `<name>` | `<name>` | `<YYYY-MM-DD>` |
+| Tech lead | `<name>` | `<name>` | `<YYYY-MM-DD>` |
+| Wave 1 champion | `<name>` | | `<YYYY-MM-DD>` |
+| Wave 2 champion | `<name>` | | `<YYYY-MM-DD>` |
+| Wave 3 champion | `<name>` | | `<YYYY-MM-DD>` |
 
 ## Responsibility matrix
 
 R = does the work, A = accountable / approves, C = consulted, I = informed.
 
 | Activity | Developer | AI | Reviewer | Tech lead | Security owner |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | Clarify ticket and acceptance criteria | R/A | C | | C | |
 | Write plan | R/A | R | | C (large changes) | C (sensitive data) |
 | Approve plan | A | | | A (architecture changes) | |

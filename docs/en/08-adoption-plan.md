@@ -7,20 +7,20 @@ How we introduce this standard to the team of about 10 developers, in three wave
 ## Roles
 
 | Role | Responsibility | Person |
-|---|---|---|
-| **Owner of the standard** | Owns the documents and templates, decides changes, publishes versions, runs retrospectives | `<name>` |
-| **Security owner** | Approves tools and client repositories, handles incidents | `<name>` |
-| **Wave 1 champion** | Leads the pilot, collects metrics and feedback | `<name>` |
-| **Wave 2 champion** | Supports the second group, collects metrics and feedback | `<name>` |
-| **Wave 3 champion** | Supports the rest of the team | `<name>` |
-| **Tech lead** | Approves pilot repositories, decides on process conflicts | `<name>` |
+| --- | --- | --- |
+| **Owner of the standard** | Owns the documents and templates, decides changes, publishes versions, runs retrospectives | See 03, Named people |
+| **Security owner** | Approves tools and client repositories, handles incidents | See 03, Named people |
+| **Wave 1 champion** | Leads the pilot, collects metrics and feedback | See 03, Named people |
+| **Wave 2 champion** | Supports the second group, collects metrics and feedback | See 03, Named people |
+| **Wave 3 champion** | Supports the rest of the team | See 03, Named people |
+| **Tech lead** | Approves pilot repositories, decides on process conflicts | See 03, Named people |
 
 ## Metrics
 
 Measured for each wave and compared with a baseline from the 4 weeks before Wave 1 on the same repositories.
 
 | Metric | Definition | Source |
-|---|---|---|
+| --- | --- | --- |
 | **Lead time** | Ticket moved to "In progress" → PR merged | Backlog + GitHub |
 | **Defects after merge** | Bugs traced to a merged PR within 30 days, per 10 PRs | Backlog (bug tickets linked to PR) |
 | **Review time** | PR opened → first human review; and PR opened → approval | GitHub |
@@ -39,7 +39,7 @@ Targets are set at the end of Wave 1, based on its data, not before.
 
 - [ ] Pilot repository chosen and approved by the tech lead.
 - [ ] Baseline metrics collected.
-- [ ] Repository has the standard installed: CLAUDE.md, `standard` profile settings, rules, agents, skills, PR template.
+- [ ] Repository has the standard installed: CLAUDE.md with the command table filled in, `standard` profile settings with the command placeholders replaced, `.claude/STANDARD_VERSION`, rules, agents, skills, PR template.
 - [ ] Claude Code listed as "Under evaluation" in the approved tools table, with the pilot repository named.
 - [ ] Both early adopters read docs 01–05 and did a 1-hour walkthrough with the owner of the standard.
 
@@ -48,6 +48,8 @@ Targets are set at the end of Wave 1, based on its data, not before.
 - Use the full workflow (02) on every ticket in the pilot repository.
 - Weekly 30-minute check-in: problems, unclear rules, false findings, missing commands.
 - Record every rule or template change needed in a feedback list.
+- Evaluate Claude Code's sandbox on the pilot repository as an extra, operating-system-level control (05). Record the result for the Wave 1 retrospective.
+- Try the docs-check workflow and generated documentation sections (09) on the pilot repository.
 
 **Exit criteria:**
 
@@ -99,6 +101,7 @@ Targets are set at the end of Wave 1, based on its data, not before.
 **Activities:**
 
 - Install the standard in each allowed repository. One PR per repository, reviewed like code.
+- From then on, repositories receive new versions through the update PRs described in 10.
 - Champions available for questions; monthly sync.
 
 **Exit criteria (end of first quarter):**
@@ -110,7 +113,7 @@ Targets are set at the end of Wave 1, based on its data, not before.
 ## Training
 
 | Session | Length | For | Content |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 1. Policy and security | 60 min | Everyone, before first use | Docs 01, 05: data classes, what never goes to AI, permission profiles, incidents |
 | 2. Workflow hands-on | 90 min | Each wave | Doc 02 on a real ticket: plan, failing test, verify, fresh-context review, PR evidence |
 | 3. Reviewing AI-assisted PRs | 45 min | All reviewers | Doc 04, with examples of weak tests and over-confident findings |
@@ -127,11 +130,6 @@ Materials and recordings are stored with the standard.
 
 ## Review cadence and versioning
 
-- The standard uses semantic versioning: `MAJOR.MINOR.PATCH`.
-  - MAJOR: workflow or policy changes that require action from everyone.
-  - MINOR: new rules, skills or templates.
-  - PATCH: wording and fixes.
-- Each repository's CLAUDE.md records the version it uses.
+- Versioning, releases and how repositories update are defined in 10-versioning-and-distribution.
 - During waves: release after each retrospective.
 - After Wave 3: quarterly review of all documents, and an immediate review after any security incident or major tool change.
-- CHANGELOG.md records every release.

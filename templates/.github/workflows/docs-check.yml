@@ -1,0 +1,46 @@
+# Pull-request check for documentation (see team standard, 09-docs-automation).
+# 1. Generated sections (between BEGIN/END GENERATED markers) must be current.
+# 2. Changes to config schema, package.json scripts or CI workflows need a docs
+#    change, unless a reviewer (not the PR author) adds the "docs-not-needed" label.
+name: docs-check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+concurrency:
+  group: docs-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  docs-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Generated documentation is up to date
+        run: node scripts/generate-docs.mjs --check
+
+      - name: Docs updated with config, scripts and workflow changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          REPO: ${{ github.repository }}
+          HAS_BYPASS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'docs-not-needed') }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/check-docs-updated.mjs

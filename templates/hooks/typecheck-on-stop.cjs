@@ -3,6 +3,9 @@
 // Claude finishes a turn. If there are type errors, exits 2 so Claude sees
 // them and continues fixing. Runs at most once per stop cycle
 // (stop_hook_active guard). No network, no downloads.
+//   Reads:    stdin JSON (stop_hook_active, cwd), tsconfig.json
+//   Executes: <project>/node_modules/.bin/tsc --noEmit -p tsconfig.json
+//   Writes:   nothing (messages on stderr only)
 'use strict';
 
 const fs = require('fs');

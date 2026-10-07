@@ -1,0 +1,24 @@
+{
+  "name": "team-ai-standards",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Team AI-assisted development standard (docs in English and Vietnamese, repository templates).",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "lint:md": "markdownlint-cli2",
+    "check:json": "node scripts/check-json.mjs",
+    "check:settings": "node scripts/build-settings.mjs --check",
+    "check:parity": "node scripts/check-parity.mjs",
+    "check:budget": "node scripts/check-context-budget.mjs",
+    "test:scripts": "node scripts/smoke-test.mjs",
+    "check:audit": "node scripts/check-audit-exceptions.mjs",
+    "build:settings": "node scripts/build-settings.mjs",
+    "check": "npm run lint:md && npm run check:json && npm run check:settings && npm run check:parity && npm run check:budget && npm run test:scripts"
+  },
+  "devDependencies": {
+    "markdownlint-cli2": "0.23.3"
+  }
+}

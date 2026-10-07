@@ -29,7 +29,7 @@ Quy tắc:
 Mỗi repository có `.claude/settings.json` lấy từ template của team. Profile phụ thuộc vào loại repository:
 
 | Loại repository | Profile | File sử dụng | AI được ghi git |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **Repository của khách hàng** (có code của khách hàng) | **strict** (mặc định) | `templates/.claude/settings.json` | Không. Không add, commit, checkout, stash, push. |
 | **Repository nội bộ** (code của mình, không có dữ liệu khách hàng) | **standard** | `templates/.claude/settings.standard.json`, đổi tên thành `settings.json` | Add/commit/branch local khi bạn xác nhận. Không bao giờ push. |
 
@@ -40,25 +40,27 @@ Cả hai profile đều chặn (deny):
 - Đọc hoặc sửa `.env*`, file key và certificate, file credential, thư mục `secrets/`, `~/.aws`, `~/.ssh`, và các bản dump database.
 - `env` / `printenv`, `aws configure`, đọc giá trị secret từ Secrets Manager hoặc SSM, đọc log CloudWatch.
 - `git push` (kể cả force), `reset --hard`, `rebase`, `merge`, `clean`, xoá branch bằng `-D`.
-- Lệnh deploy, `terraform apply/destroy`, `cdk destroy`.
+- Các lệnh deploy được liệt kê cụ thể: `npm/pnpm/yarn run deploy*`, `cdk deploy/destroy`, `serverless`/`sls deploy`, `sam deploy`, `copilot … deploy`, `eb deploy`, `terraform apply/destroy`, `aws ecs update-service`, `aws ecs run-task`, `aws cloudformation deploy`, `docker push`.
 - Lệnh AWS CLI tạo, cập nhật, xoá, start, stop, run, tag hoặc copy tài nguyên, cùng `s3 cp/mv/rm/sync`.
 - Merge, review hoặc release qua GitHub CLI.
-- Kết nối database bằng `mysql` CLI hoặc dump database.
-- Chế độ bypass permissions. MCP server của project không được tự động bật.
+- Kết nối database bằng `mysql` CLI hoặc dump bằng `mysqldump`. Các rule này chỉ khớp với lệnh bắt đầu bằng đúng hai chương trình đó, nên `mysqladmin` hay `grep mysql` không bị ảnh hưởng.
+- Chế độ bypass permissions (`"disableBypassPermissionsMode": "disable"`). MCP server của project không được tự động bật.
 
 Cả hai profile đều hỏi (ask) trước khi:
 
-- Cài hoặc cập nhật package, `npx`, `docker`, `curl`, `wget`, mọi lệnh `aws` hoặc `gh` khác, web fetch và web search.
+- Cài hoặc cập nhật package, `npx`, `docker`, `curl`, `wget`, mọi lệnh `aws` hoặc `gh` khác, tạo hoặc chạy migration, web fetch và web search.
 
 Cả hai profile cho phép không cần hỏi:
 
-- Build, typecheck, lint, test, xem trạng thái migration, `npm audit`, và các lệnh git chỉ đọc.
+- Các lệnh build, lint, typecheck, unit test, integration test và xem trạng thái migration của repository, `npm audit`, và các lệnh git chỉ đọc.
+- Trong template, các lệnh này được ghi dưới dạng placeholder (`<build-cmd>`, `<unit-test-cmd>`, …). Hãy thay bằng lệnh trong bảng lệnh của CLAUDE.md. Placeholder chưa điền sẽ không khớp với lệnh nào, nên lệnh đó chỉ đơn giản là phải hỏi.
 
-Giới hạn của permission rule:
+Giới hạn của permission rule (theo tài liệu chính thức của Claude Code, trang "Configure permissions"):
 
-- Rule cho lệnh so khớp theo nội dung câu lệnh. Một agent cố tình hoặc bị lừa vẫn có thể tìm một lệnh khác có cùng tác dụng. Settings giảm rủi ro; chúng không tạo ra sandbox.
-- Vì vậy: không để secret thật trong working copy, dùng giá trị giả ở local khi phát triển, và theo dõi những gì AI chạy.
-- Rule có chữ "deploy" sẽ chặn mọi lệnh chứa từ đó, kể cả lệnh vô hại (ví dụ `grep deploy`). Những lệnh đó bạn tự chạy.
+- Rule cho Bash so khớp với nội dung câu lệnh mà Claude viết ra. Tài liệu ghi rõ rule như vậy "covers the invocation Claude usually produces and isn't a security boundary around the program", tức là nó chỉ chặn cách gọi thông thường chứ không phải ranh giới bảo mật quanh chương trình. Cùng chương trình đó nếu được gọi bằng đường dẫn đầy đủ, bên trong `sh -c`, hoặc từ một script thì sẽ không bị khớp.
+- Deny rule cho `Read` và `Edit` cũng áp dụng cho các lệnh đọc/ghi file mà Claude Code nhận diện được trong Bash (`cat`, `head`, `tail`, `sed`, `tee`) và cho redirection. Chúng **không** áp dụng cho lệnh đọc file mà không nêu tên file (ví dụ `grep -r pattern .`) hoặc script tự mở file.
+- Deny rule trong `permissions.deny` áp dụng cho cả cuộc hội thoại chính lẫn các subagent.
+- Vì vậy: không để secret thật trong working copy, dùng giá trị giả ở local khi phát triển, và theo dõi những gì AI chạy. Để chặn ở mức hệ điều hành, tài liệu khuyến nghị dùng sandbox của Claude Code; việc đánh giá sandbox nằm trong pilot Wave 1 (xem 08).
 
 Ghi đè ở local:
 
@@ -71,7 +73,7 @@ Phần mở rộng thêm chỉ dẫn, tool hoặc code vào session AI của b�
 ### 4.1 Những rủi ro cần tìm
 
 | Rủi ro | Ý nghĩa | Vì sao quan trọng với chúng ta |
-|---|---|---|
+| --- | --- | --- |
 | **Ghi lại input/output của tool** | Lưu prompt, nội dung file, output của lệnh hoặc diff xuống đĩa (log, "memory", "learning", analytics) | Code của khách hàng và dữ liệu khách hàng nằm ở những nơi ta không kiểm soát hoặc không dọn dẹp |
 | **Gửi dữ liệu ra khỏi máy** | Gọi API từ xa, telemetry, cloud memory, model AI khác, webhook | Dữ liệu mật đi ra ngoài phạm vi của ta |
 | **Chạy code ở mỗi lần gọi tool hoặc sự kiện session** | Hook tự động chạy script, thường với toàn bộ quyền user của bạn | Một lỗi hoặc một bản cập nhật độc hại chạy âm thầm ở mọi thao tác |
@@ -111,7 +113,9 @@ Tự động từ chối cho repository của khách hàng: bất cứ thứ gì
 
 ### 4.4 Hook của team
 
-Các hook tuỳ chọn của team (`templates/hooks/`) đáp ứng các quy tắc này: tất định, chỉ dùng binary local, không gọi mạng, ghi rõ đọc và ghi những gì. Mọi hook mới đều phải qua cùng quy trình review.
+Hook của team chỉ được **kiểm tra** hoặc **nhắc nhở**. Hook của team không bao giờ được ghi hoặc sửa file trong repository, ghi file dùng chung (docs, CLAUDE.md, settings), commit hay push, gọi mạng, tải bất cứ thứ gì về, hoặc gửi dữ liệu ra khỏi máy. Việc ghi và công bố thay đổi do developer làm, hoặc do CI làm trên pull request (xem 09).
+
+Các hook tuỳ chọn của team (`templates/hooks/`) tuân theo quy tắc này: tất định, chỉ chạy binary local ở chế độ kiểm tra, và ghi rõ chúng đọc và chạy những gì. Mọi hook mới đều phải qua cùng quy trình review.
 
 ## 5. Quản lý secret
 

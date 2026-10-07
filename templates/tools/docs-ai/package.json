@@ -1,0 +1,8 @@
+{
+  "name": "docs-ai-tools",
+  "private": true,
+  "description": "Pinned Claude Code CLI for the optional docs-ai-proposal workflow. Install only with: npm ci --ignore-scripts",
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.292"
+  }
+}

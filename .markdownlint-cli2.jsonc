@@ -1,0 +1,18 @@
+{
+  // Markdown lint configuration for the team standard.
+  "config": {
+    "default": true,
+    // Long lines are normal in prose and tables.
+    "MD013": false,
+    // Repeated headings such as "Steps" are fine in different sections.
+    "MD024": { "siblings_only": true },
+    // Placeholders use <angle brackets> by convention (<PROJ>, <command>).
+    "MD033": false,
+    // Agent prompts and the PR template intentionally do not start with an H1.
+    "MD041": false,
+    // Tables use "| a | b |" with "| --- |" delimiter rows.
+    "MD060": { "style": "compact" }
+  },
+  "globs": ["**/*.md"],
+  "ignores": ["node_modules/**"]
+}
