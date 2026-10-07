@@ -37,7 +37,7 @@ node ../team-ai-standards/scripts/adopt.mjs --profile strict --yes
 | Settings | Claude Code đọc để quyết định lệnh nào được phép, phải hỏi hay bị chặn | Không tốn context |
 | Hook, script, workflow, manifest | AI không đọc tự động | Không tốn context |
 
-Với template 0.3.0: phần luôn được load khoảng 1.640 từ; tổ hợp fragment lớn nhất (Express + MySQL + PostgreSQL + TypeORM + AWS) khoảng 2.150 từ. Giới hạn 2.300 từ, mỗi rule fragment tối đa 150 từ; `npm run check:budget` trong repo tiêu chuẩn kiểm tra mọi tổ hợp hợp lệ. Rule trong `rules/local` cũng được load mọi session, nên hãy viết ngắn.
+Với template 0.4.0: phần luôn được load khoảng 1.700 từ; tổ hợp fragment lớn nhất (Express + MySQL + PostgreSQL + TypeORM + AWS) khoảng 2.200 từ. Giới hạn 2.300 từ, mỗi rule fragment tối đa 150 từ; `npm run check:budget` trong repo tiêu chuẩn kiểm tra mọi tổ hợp hợp lệ. Rule trong `rules/local` cũng được load mọi session, nên hãy viết ngắn.
 
 ## CLAUDE.md (lớp 2)
 

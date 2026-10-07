@@ -82,8 +82,14 @@ Dùng checklist này khi review bất kỳ PR nào có AI hỗ trợ. Tiêu chu�
 - [ ] Finding bị bác bỏ có lý do cụ thể, không chỉ ghi "false positive".
 - [ ] Tác giả đã tick ô "I have read and understood every line". Nếu nghi ngờ điều đó không đúng, hãy hỏi về những dòng cụ thể.
 
+## 11. Chặn lỗi quay lại
+
+- [ ] Với PR sửa bug, mục "Regression guard" trong PR nêu rõ điều gì giờ ngăn bug quay lại: một test, một bước CI, một rule lint, một type hoặc một constraint, hoặc giải thích vì sao không thể có.
+- [ ] Biện pháp đó có thật: test được nêu tên fail khi chưa có bản sửa (xem phần test evidence), hoặc bước CI, rule lint, type hay constraint đó lẽ ra đã bắt được bug ban đầu.
+- [ ] Check CI, regression test và deny rule của permission mới đều có comment ngắn nêu lỗi mà nó ngăn chặn (kèm mã ticket nếu có). PR gỡ bỏ hoặc nới lỏng một biện pháp chặn như vậy phải trả lời comment đó.
+
 ## Kết quả
 
 - **Approve:** mọi mục áp dụng đều đạt.
-- **Request changes:** bất kỳ mục nào trong phần 2–7 không đạt.
+- **Request changes:** bất kỳ mục nào trong phần 2–7 không đạt, hoặc PR sửa bug có mục regression guard để trống hoặc không thuyết phục, hoặc PR gỡ bỏ hay nới lỏng một biện pháp chặn mà không trả lời comment của nó (phần 11).
 - **Comment:** chỉ có câu hỏi.

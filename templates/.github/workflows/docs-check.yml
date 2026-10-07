@@ -2,6 +2,9 @@
 # 1. Generated sections (between BEGIN/END GENERATED markers) must be current.
 # 2. Changes to config schema, package.json scripts or CI workflows need a docs
 #    change, unless a reviewer (not the PR author) adds the "docs-not-needed" label.
+# No paths: filter on purpose. A required check skipped by path filtering stays
+# Pending and blocks merging (GitHub Docs, "Troubleshooting required status
+# checks"). Decide inside the job instead.
 name: docs-check
 
 on:

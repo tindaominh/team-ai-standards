@@ -2,6 +2,9 @@
 # Checks on every pull request that the team AI standard files (Layer 1) are
 # intact and that .claude/settings.json and the CLAUDE.md command table match
 # .claude/project.json. See the team standard, 10-versioning-and-distribution.
+# No paths: filter on purpose. A required check skipped by path filtering stays
+# Pending and blocks merging (GitHub Docs, "Troubleshooting required status
+# checks"). Decide inside the job instead.
 name: std-check
 
 on:

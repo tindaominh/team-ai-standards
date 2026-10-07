@@ -7,4 +7,5 @@
 - Use named constants for business values (timeouts, limits, status codes). No magic numbers.
 - Do not leave `console.log`, commented-out code or TODOs without a ticket key (e.g. `TODO(PROJ-123)`).
 - Change only what the task needs. Put unrelated refactors in a separate PR.
+- Every CI check, regression test and permission deny rule has a short comment naming the failure it prevents, with the ticket key if any. `.claude/project.json` has no comments: give the reason in the commit that adds the rule. A PR that removes or weakens such a guard answers that comment.
 - Update docs, README or OpenAPI specs in the same PR when behaviour changes.
