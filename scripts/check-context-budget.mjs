@@ -29,7 +29,7 @@ const description = (fm) => {
 
 const sampleProject = {
   profile: 'standard',
-  stack: { framework: 'express', databases: ['mysql', 'postgres'], dataAccess: 'typeorm', optional: ['aws'] },
+  stack: { framework: 'express', databases: ['mysql', 'postgres'], dataAccess: 'typeorm', optional: Object.keys(registry().dimensions.optional.values) },
   commands: Object.fromEntries(COMMANDS.map(([key]) => [key, `npm run ${key}:example`]))
 };
 const claudeMd = applyBlocks(readFileSync(join(T, 'CLAUDE.md'), 'utf8'), renderBlocks(sampleProject));

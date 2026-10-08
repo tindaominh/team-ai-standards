@@ -15,7 +15,7 @@ Everything the AI loads into its context costs money and attention. A small, foc
 | `.claude/agents/std-*.md` | Description always; body only in the subagent | Roles that need a fresh context and limited tools | Anything the main session needs |
 | `docs/` (this standard, ADRs, runbooks) | Only when someone asks the AI to read them | Explanations for humans | Instructions the AI must always follow |
 
-`common/marketplace-integration.md` is always loaded for now, because most of our work touches channel adapters. If the budget becomes tight after the pilot, it can be path-scoped to the integration folders (for example `src/channels/**`, `src/orders/**`, `src/stock/**`).
+Marketplace integration is an optional fragment since 0.8.0 (`--with marketplace`, rule `fragments/optional-marketplace.md`): it is loaded only in repositories that select it, so repositories without channel adapters do not pay for it. Repositories that had it as a common rule keep it until they record the choice (10, section 6).
 
 ## Size limits
 

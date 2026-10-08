@@ -48,7 +48,7 @@ Mục tiêu được đặt vào cuối Wave 1, dựa trên số liệu của wa
 - Dùng toàn bộ quy trình (02) cho mọi ticket trong repository pilot.
 - Check-in hằng tuần 30 phút: vấn đề gặp phải, rule chưa rõ, finding sai, lệnh còn thiếu.
 - Ghi mọi thay đổi cần cho rule hoặc template vào danh sách phản hồi.
-- Đánh giá sandbox của Claude Code trên repository pilot như một lớp kiểm soát bổ sung ở mức hệ điều hành (05). Ghi kết quả để đưa vào retrospective của Wave 1.
+- Thử các cách cách ly ở 05, mục 3.1 (sandbox của Claude Code hoặc dev container) trên repository pilot. Ghi lại cách nào chạy được với test và build của repository để đưa vào retrospective của Wave 1.
 - Thử workflow docs-check và các phần tài liệu được sinh tự động (09) trên repository pilot.
 
 **Tiêu chí kết thúc:**

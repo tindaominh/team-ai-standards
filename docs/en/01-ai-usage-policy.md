@@ -40,6 +40,8 @@ Rules:
 Practical rules:
 
 - Never paste secrets, personal data or production data into a prompt, a ticket you ask the AI to read, or a file the AI can read.
+- While working with AI, keep no real secrets in `.env` files inside the repository: they hold local or fake values only, and real secrets are injected at run time from a password-manager CLI or a similar secret store. Tests, scripts and tool configs that the AI runs can read any file in the working copy (05, section 3).
+- Cloud credentials on your machine must be short-lived (SSO or assumed-role sessions) or protected by MFA. No long-lived access keys on developer machines.
 - Use synthetic data for tests, examples and debugging. If you need to reproduce a production bug, rebuild the case with fake values.
 - Do not paste client names, client domain terms or code into web searches made through the AI.
 - When you notice an AI tool has seen something it should not, follow the incident steps in 05-security-guidelines. Do not hide it.

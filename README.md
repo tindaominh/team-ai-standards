@@ -38,7 +38,7 @@ The script detects the stack from `package.json` (framework, databases, data acc
     - **Values:** each configuration value and its source (flag, `project.json`, detected, default).
     - **Plan:** every file to create, modify or delete.
     - **Diffs:** `.claude/project.json`, `.claude/settings.json`, `CLAUDE.md` and the other modified files, as unified diffs.
-    - **Permission rules:** each existing `allow` rule is covered (the profile grants it), unsafe (dropped, never carried), carried, dropped, or needs decision.
+    - **Permission rules:** each existing `allow` rule is covered (the profile grants it), unsafe (dropped, never carried), carried, dropped, or needs decision. A rule that runs a package script is unsafe when any script in its chain runs a command the profile asks about or denies; the chain is shown (`pnpm verify → pnpm check → cdk synth (profile asks Bash(cdk *))`). Every rule that needs a decision has a hint.
     - **Optional cleanup:** duplicates you may remove by hand; never done automatically.
     - **Decisions required:** what `--yes` refuses until you add a flag.
     - **Plan hash:** identifies exactly this plan.
@@ -72,7 +72,7 @@ Adoption is two commands with the same options. `--dry-run` writes nothing: it s
 | `--framework` | `nestjs \| express \| none` | detected from `package.json` | `.claude/project.json` → `stack.framework` | Web framework. `none`: a service without a web framework (worker, consumer). |
 | `--db` | `mysql \| postgres` | detected from `package.json` | `.claude/project.json` → `stack.databases` | Databases, one or more (repeat the option or separate with commas). |
 | `--data-access` | `typeorm \| raw \| none` | detected from `package.json` | `.claude/project.json` → `stack.dataAccess` | Data-access library. `raw`: a driver without an ORM; `none`: no database. |
-| `--with` | `aws` | detected (dependencies, `infra/` folders) | `.claude/project.json` → `stack.optional` | Optional fragments to install. |
+| `--with` | `aws \| marketplace` | detected (dependencies, `infra/` folders) | `.claude/project.json` → `stack.optional` | Optional fragments to install: `aws` (detected), `marketplace` (channel adapters, stock sync, orders; never detected). |
 | `--without-optional` | — | off | `.claude/project.json` → `stack.optional` (empty) | Install no optional fragment, even if one is detected. |
 | `--stack` | `nestjs-mysql \| nestjs-postgres \| node-postgres` | none | `.claude/project.json` → `stack` (expanded) | Shortcut that sets every stack dimension; the options above override it. |
 | `--with-docs` | — | off | `.claude/project.json` → `optionalGroups` | Also install the documentation checks (doc 09); updates keep them current. |
@@ -182,7 +182,7 @@ Script tự nhận diện stack từ `package.json` (framework, database, data a
     - **Values:** từng giá trị cấu hình và nguồn của nó (flag, `project.json`, detect, mặc định).
     - **Plan:** mọi file sẽ tạo, sửa hoặc xoá.
     - **Diff:** `.claude/project.json`, `.claude/settings.json`, `CLAUDE.md` và các file bị sửa khác, dạng unified diff.
-    - **Permission rules:** mỗi rule `allow` đang có là covered (profile đã cấp), unsafe (bị bỏ, không bao giờ được giữ), carried, dropped, hoặc needs decision.
+    - **Permission rules:** mỗi rule `allow` đang có là covered (profile đã cấp), unsafe (bị bỏ, không bao giờ được giữ), carried, dropped, hoặc needs decision. Rule chạy một script package là unsafe khi bất kỳ script nào trong chuỗi chạy một lệnh mà profile hỏi hoặc chặn; chuỗi đó được in ra (`pnpm verify → pnpm check → cdk synth (profile asks Bash(cdk *))`). Mọi rule cần quyết định đều có gợi ý.
     - **Optional cleanup:** phần trùng lặp bạn có thể tự xoá; không bao giờ làm tự động.
     - **Decisions required:** những gì `--yes` từ chối cho đến khi bạn thêm flag.
     - **Plan hash:** định danh đúng plan này.
@@ -216,7 +216,7 @@ Script tự nhận diện stack từ `package.json` (framework, database, data a
 | `--framework` | `nestjs \| express \| none` | detect từ `package.json` | `.claude/project.json` → `stack.framework` | Web framework. `none`: service không có web framework (worker, consumer). |
 | `--db` | `mysql \| postgres` | detect từ `package.json` | `.claude/project.json` → `stack.databases` | Database, một hoặc nhiều (lặp lại option hoặc ngăn cách bằng dấu phẩy). |
 | `--data-access` | `typeorm \| raw \| none` | detect từ `package.json` | `.claude/project.json` → `stack.dataAccess` | Thư viện data access. `raw`: driver không có ORM; `none`: không có database. |
-| `--with` | `aws` | detect (dependency, thư mục `infra/`) | `.claude/project.json` → `stack.optional` | Các fragment tuỳ chọn cần cài. |
+| `--with` | `aws \| marketplace` | detect (dependency, thư mục `infra/`) | `.claude/project.json` → `stack.optional` | Các fragment tuỳ chọn cần cài: `aws` (được detect), `marketplace` (adapter kênh bán, đồng bộ tồn kho, đơn hàng; không bao giờ tự detect). |
 | `--without-optional` | — | tắt | `.claude/project.json` → `stack.optional` (rỗng) | Không cài fragment tuỳ chọn nào, kể cả khi detect được. |
 | `--stack` | `nestjs-mysql \| nestjs-postgres \| node-postgres` | không có | `.claude/project.json` → `stack` (đã khai triển) | Lối tắt đặt mọi chiều của stack; các option ở trên ghi đè lên nó. |
 | `--with-docs` | — | tắt | `.claude/project.json` → `optionalGroups` | Cài thêm các kiểm tra tài liệu (tài liệu 09); bản cập nhật giữ chúng mới. |

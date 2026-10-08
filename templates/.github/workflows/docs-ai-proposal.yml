@@ -14,8 +14,12 @@
 #        npm install --package-lock-only --ignore-scripts --prefix tools/docs-ai
 #      The workflow installs only with `npm ci --ignore-scripts` (integrity-checked
 #      against the lockfile). It never uses npx.
-#   3. Secret ANTHROPIC_API_KEY (company account) and variable
-#      DOCS_AI_PROPOSAL_ENABLED=true.
+#   3. Environment "docs-ai" with required reviewers (where the plan offers them)
+#      and deployment branches limited to the default branch; the secret
+#      ANTHROPIC_API_KEY (company account) is an environment secret, never a
+#      repository secret, so a workflow changed on an unreviewed branch cannot read
+#      it (standard doc 05). GitHub creates a missing environment on first use with
+#      no protection rules. Variable DOCS_AI_PROPOSAL_ENABLED=true.
 #
 # Guardrails:
 #   - Runs only when variable DOCS_AI_PROPOSAL_ENABLED == 'true'.
@@ -48,6 +52,7 @@ concurrency:
 jobs:
   propose:
     if: vars.DOCS_AI_PROPOSAL_ENABLED == 'true'
+    environment: docs-ai
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

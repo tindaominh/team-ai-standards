@@ -46,8 +46,8 @@ export const OPTIONS = [
     name: 'with', value: values('optional'), repeat: true, kind: 'config',
     default: { en: 'detected (dependencies, `infra/` folders)', vi: 'detect (dependency, thư mục `infra/`)' },
     persisted: { en: `${PJ} → \`stack.optional\``, vi: `${PJ} → \`stack.optional\`` },
-    en: 'Optional fragments to install.',
-    vi: 'Các fragment tuỳ chọn cần cài.'
+    en: 'Optional fragments to install: `aws` (detected), `marketplace` (channel adapters, stock sync, orders; never detected).',
+    vi: 'Các fragment tuỳ chọn cần cài: `aws` (được detect), `marketplace` (adapter kênh bán, đồng bộ tồn kho, đơn hàng; không bao giờ tự detect).'
   },
   {
     name: 'without-optional', value: null, kind: 'config',

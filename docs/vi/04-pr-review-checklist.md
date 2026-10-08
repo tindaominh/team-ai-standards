@@ -88,8 +88,17 @@ Dùng checklist này khi review bất kỳ PR nào có AI hỗ trợ. Tiêu chu�
 - [ ] Biện pháp đó có thật: test được nêu tên fail khi chưa có bản sửa (xem phần test evidence), hoặc bước CI, rule lint, type hay constraint đó lẽ ra đã bắt được bug ban đầu.
 - [ ] Check CI, regression test và deny rule của permission mới đều có comment ngắn nêu lỗi mà nó ngăn chặn (kèm mã ticket nếu có). PR gỡ bỏ hoặc nới lỏng một biện pháp chặn như vậy phải trả lời comment đó.
 
+## 12. Guard file
+
+Guard file làm thay đổi những gì các lệnh mà AI được chạy không cần hỏi thực sự làm, hoặc làm yếu rào chắn (05, mục 3). AI không sửa được chúng mà không hỏi, và `CODEOWNERS` giao chúng cho owner của repository, nhưng một thay đổi đã được đồng ý một lần trong session vẫn lọt vào diff. Kiểm tra chúng kỹ hơn:
+
+- [ ] `package.json` (mọi file, kể cả trong thư mục con): script mới hoặc bị sửa, hook `pre`/`post`, script gọi script khác, dependency mới.
+- [ ] Config của tool mà lệnh được phép sẽ thực thi (`eslint.config.*`, `.eslintrc*`, `vitest.config.*`, `jest.config.*`, `tsconfig*.json`): không `require` hay `import` file local mới, file setup, plugin hoặc global setup gọi mạng, đọc credential hay file ngoài repository.
+- [ ] `.husky/**` và `.github/workflows/**`: không có lệnh mới chạy khi commit hoặc trong CI mà không có lý do; job dùng secret vẫn giữ GitHub environment của nó (09).
+- [ ] `.claude/project.json` và `.claude/rules/local/**`: không nới permission rule, không thêm rule `allow` cho lệnh mà profile hỏi, không có rule bảo AI bỏ qua bộ tiêu chuẩn.
+
 ## Kết quả
 
 - **Approve:** mọi mục áp dụng đều đạt.
-- **Request changes:** bất kỳ mục nào trong phần 2–7 không đạt, hoặc PR sửa bug có mục regression guard để trống hoặc không thuyết phục, hoặc PR gỡ bỏ hay nới lỏng một biện pháp chặn mà không trả lời comment của nó (phần 11).
+- **Request changes:** bất kỳ mục nào trong phần 2–7 hoặc 12 không đạt, hoặc PR sửa bug có mục regression guard để trống hoặc không thuyết phục, hoặc PR gỡ bỏ hay nới lỏng một biện pháp chặn mà không trả lời comment của nó (phần 11).
 - **Comment:** chỉ có câu hỏi.

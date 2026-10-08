@@ -74,7 +74,17 @@
       "Bash(sls *)",
       "Bash(pulumi *)",
       "Bash(copilot *)",
-      "Bash(eb *)"
+      "Bash(eb *)",
+      "Edit(**/package.json)",
+      "Edit(/.claude/project.json)",
+      "Edit(/.claude/rules/local/**)",
+      "Edit(/.husky/**)",
+      "Edit(/.github/workflows/**)",
+      "Edit(**/eslint.config.*)",
+      "Edit(**/.eslintrc*)",
+      "Edit(**/vitest.config.*)",
+      "Edit(**/jest.config.*)",
+      "Edit(**/tsconfig*.json)"
     ],
     "deny": [
       "Read(**/.env)",

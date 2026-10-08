@@ -12,6 +12,8 @@ const KNOWN_PERMISSIONS = new Set(['allow', 'ask', 'deny', 'disableBypassPermiss
 // (https://code.claude.com/docs/en/permissions): "A `*` at the end, with a space
 // before it, also matches the bare command" when it is the only wildcard, and a
 // trailing ":*" is the same as " *".
+import { formatChain, resolveChain } from './script-chain.mjs';
+
 const parse = (rule) => {
   const m = /^([^(]+)(?:\((.*)\))?$/.exec(rule);
   return m ? { tool: m[1], spec: m[2] } : { tool: rule, spec: undefined };
@@ -62,26 +64,44 @@ export function overlaps(ruleA, ruleB) {
   return alternatives(a.spec).some((x) => alternatives(b.spec).some((y) => globsIntersect(x, y)));
 }
 
-// A hint for an allow rule that needs a human decision.
+// A hint for an allow rule that needs a human decision. Every such rule gets one.
 const HINTS = [
   ['uses cloud credentials', /^(?:(?:npx|npm(?: run| exec)?|pnpm(?: run| exec| dlx)?|yarn(?: run)?) )?(?:cdk|aws|terraform|sam|serverless|sls|pulumi|gcloud|az|firebase|vercel|netlify|copilot|eb)\b/],
   ['runs a long-lived process', /(?:^|[ :])(?:dev|start|serve|watch|preview)\b|--watch\b|^(?:vite|next dev|nest start|nodemon)\b/],
-  ['read-only', /^(?:ls|cat|head|tail|grep|rg|find|tree|wc|pwd|which|du|df|stat|git (?:status|diff|log|show|blame|rev-parse|merge-base|ls-files|branch --show-current))\b|--version\b|--help\b|[ :](?:list|ls|show|outdated|status)\b/]
+  ['read-only', /^(?:ls|cat|head|tail|grep|rg|find|tree|wc|pwd|which|du|df|stat|git (?:status|diff|log|show|blame|rev-parse|merge-base|ls-files|branch --show-current))\b|--version\b|--help\b|[ :](?:list|ls|show|outdated|status)\b/],
+  ['runs repository code (tests, configs, scripts)', /^(?:node|tsx|ts-node|deno|bun|jest|vitest|mocha|eslint|prettier|tsc|nest build|make|bash|sh)\b/]
 ];
+export const NO_HINT = 'no known category: check what it runs';
 export function allowHint(rule) {
   const { tool, spec } = parse(rule);
   if (['Read', 'Grep', 'Glob', 'LS'].includes(tool)) return 'read-only';
-  if (tool !== 'Bash' || spec === undefined) return null;
+  if (tool === 'Edit') return 'edits files without asking';
+  if (tool !== 'Bash' || spec === undefined) return NO_HINT;
   const hit = HINTS.find(([, re]) => re.test(normalizeSpec(spec)));
-  return hit ? hit[0] : null;
+  return hit ? hit[0] : NO_HINT;
+}
+
+// Does a profile rule match one concrete command? (Bash only.)
+export const matchesCommand = (rule, command) => covers(rule, `Bash(${command})`);
+
+// The command an allow rule names, without a trailing " *" or ":*" (null when it has other wildcards).
+function commandOf(rule) {
+  const { tool, spec } = parse(rule);
+  if (tool !== 'Bash' || spec === undefined) return null;
+  const s = normalizeSpec(spec);
+  const bare = bareOf(s);
+  const cmd = bare === null ? s : bare;
+  return cmd.includes('*') ? null : cmd;
 }
 
 // existingText: current .claude/settings.json. generated: settings the profile
 // alone would produce (with the project's commands). choices: per-rule allow
-// decisions { carry: [rule], drop: [rule], dropRest: boolean }.
+// decisions { carry: [rule], drop: [rule], dropRest: boolean }. scripts: the
+// repository's package.json scripts, to see what an allow rule that runs a package
+// script really runs (scripts/lib/script-chain.mjs).
 // Returns { extra: {allow, ask, deny}, carried, dropped, replaced, decisions, allowReport }.
 // Decisions about allow rules have kind 'allow'; they can never be proposed away.
-export function mergeSettings(existingText, generated, choices = {}) {
+export function mergeSettings(existingText, generated, choices = {}, scripts = {}) {
   const carry = choices.carry || [];
   const drop = choices.drop || [];
   const result = { extra: { allow: [], ask: [], deny: [] }, carried: [], dropped: [], replaced: [], decisions: [], allowReport: [] };
@@ -131,6 +151,24 @@ export function mergeSettings(existingText, generated, choices = {}) {
     if (by) { result.allowReport.push({ rule, status: 'covered', by }); continue; }
     const d = g.deny.find((x) => overlaps(x, rule));
     const a = d ? null : g.ask.find((x) => overlaps(x, rule));
+    // A package script runs commands the rule does not name: follow the chain.
+    const cmd = d || a ? null : commandOf(rule);
+    const chain = cmd === null ? null : resolveChain(cmd, scripts, (c) => {
+      const deny = g.deny.find((x) => matchesCommand(x, c));
+      if (deny) return { rule: deny, list: 'deny' };
+      const ask = g.ask.find((x) => matchesCommand(x, c));
+      return ask ? { rule: ask, list: 'ask' } : null;
+    });
+    if (chain && chain.hit) {
+      const { rule: by, list } = chain.hit;
+      const ran = chain.chain[chain.chain.length - 1];
+      result.dropped.push({ list: 'allow', rule, reason: `runs ${ran} through ${formatChain(chain.chain.slice(0, -1))}; the profile ${list === 'deny' ? 'denies' : 'asks'} ${by}` });
+      result.allowReport.push({ rule, status: 'unsafe', by, list, chain: chain.chain });
+      if (carry.includes(rule)) {
+        result.decisions.push({ kind: 'allow', file: '.claude/settings.json', what: `allow ${rule} cannot be carried: it runs ${ran} through ${formatChain(chain.chain.slice(0, -1))} (profile ${list === 'deny' ? 'denies' : 'asks'} ${by})`, resolve: `remove --carry-allow "${rule}"; the rule is dropped` });
+      }
+      continue;
+    }
     if (d || a) {
       const reason = d ? `conflicts with the profile deny ${d}` : `overlaps the profile ask ${a}; ask wins, so the allow cannot be carried`;
       result.dropped.push({ list: 'allow', rule, reason });
@@ -140,7 +178,7 @@ export function mergeSettings(existingText, generated, choices = {}) {
       }
       continue;
     }
-    const hint = allowHint(rule);
+    const hint = chain ? scriptHint(chain) : allowHint(rule);
     if (carry.includes(rule)) {
       result.extra.allow.push(rule);
       result.carried.push({ list: 'allow', rule, reason: 'confirmed with --carry-allow' });
@@ -160,6 +198,12 @@ export function mergeSettings(existingText, generated, choices = {}) {
     result.replaced.push(`permissions.disableBypassPermissionsMode: ${JSON.stringify(p.disableBypassPermissionsMode)} → ${JSON.stringify(g.disableBypassPermissionsMode)} (profile value)`);
   }
   return result;
+}
+
+function scriptHint(chain) {
+  const parts = [`runs a package script: ${chain.leaves.length ? chain.leaves.join(', ') : 'nothing found'}`];
+  if (chain.missing.length) parts.push(`script(s) not found: ${chain.missing.join(', ')}`);
+  return parts.join('; ');
 }
 
 // Markdown headings, for duplicate-section suggestions in the PR template.

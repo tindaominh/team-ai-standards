@@ -5,10 +5,15 @@
 #
 # Configuration (repository or organisation settings):
 #   variable CHAT_PROVIDER   slack (default when unset) | teams
-#   secret   SLACK_WEBHOOK_URL   Slack incoming webhook (default provider)
-#   secret   TEAMS_WEBHOOK_URL   Microsoft Teams workflow webhook (alternative)
+#   environment secret SLACK_WEBHOOK_URL   Slack incoming webhook (default provider)
+#   environment secret TEAMS_WEBHOOK_URL   Microsoft Teams workflow webhook (alternative)
 # Webhook URLs come only from GitHub Secrets, never from files in the repository.
 # If the secret for the selected provider is not set, the job does nothing.
+# Secrets live in the GitHub environment "docs-notify", never in repository secrets, so a
+# workflow changed on an unreviewed branch cannot read them (standard doc 05, "Secret
+# handling"). Before enabling: create the environment with required reviewers (where the
+# plan offers them) and deployment branches limited to the default branch, then add the secrets
+# to it. GitHub creates a missing environment on first use with no protection rules.
 name: docs-notify
 
 on:
@@ -24,6 +29,7 @@ permissions:
 
 jobs:
   notify:
+    environment: docs-notify
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

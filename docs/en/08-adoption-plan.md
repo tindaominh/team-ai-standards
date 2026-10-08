@@ -48,7 +48,7 @@ Targets are set at the end of Wave 1, based on its data, not before.
 - Use the full workflow (02) on every ticket in the pilot repository.
 - Weekly 30-minute check-in: problems, unclear rules, false findings, missing commands.
 - Record every rule or template change needed in a feedback list.
-- Evaluate Claude Code's sandbox on the pilot repository as an extra, operating-system-level control (05). Record the result for the Wave 1 retrospective.
+- Try the isolation options of 05, section 3.1 (Claude Code's sandbox or a dev container) on the pilot repository. Record which works with the repository's tests and builds for the Wave 1 retrospective.
 - Try the docs-check workflow and generated documentation sections (09) on the pilot repository.
 
 **Exit criteria:**
