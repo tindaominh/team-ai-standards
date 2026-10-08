@@ -4,7 +4,8 @@
 //
 // action: create | modify | delete | propose | same. Only "same" writes nothing.
 // For a repository that already adopted the standard (`previous` = its project.json),
-// only the values that changed are written: project.json keeps its other keys,
+// only the values that changed are written: project.json keeps its other keys (commands
+// change only where adopt.mjs filled a null one),
 // CLAUDE.md only gets its std blocks refreshed, and standard files that the new
 // selection no longer needs are deleted (they are listed in the manifest).
 import { existsSync, readFileSync } from 'node:fs';
@@ -66,7 +67,10 @@ export function buildPlan(ctx) {
   if (previous) {
     project = { ...previous };
     for (const key of CONFIG_KEYS) if (!sameValue(previous[key], config[key])) project[key] = config[key];
-    if (CONFIG_KEYS.some((key) => !sameValue(previous[key], config[key]))) {
+    // Commands still null in project.json that package.json now provides (adopt.mjs fills only those).
+    const commandsChanged = !sameValue(previous.commands, commands);
+    if (commandsChanged) project.commands = commands;
+    if (commandsChanged || CONFIG_KEYS.some((key) => !sameValue(previous[key], config[key]))) {
       actions.push({ path: '.claude/project.json', action: 'modify', before: read('.claude/project.json'), after: `${JSON.stringify(project, null, 2)}\n` });
     }
   } else {

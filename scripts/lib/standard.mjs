@@ -13,6 +13,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { BLOCK_NAMES, applyBlocks } from '../../templates/.claude/std/compose.mjs';
 
 export const ROOT = new URL('../../', import.meta.url).pathname;
 export const T = join(ROOT, 'templates');
@@ -252,6 +253,13 @@ export function findBlock(text) {
 
 // CLAUDE.md for a repository without one; its std blocks are filled by compose.mjs.
 export const claudeSkeleton = () => readFileSync(join(T, 'CLAUDE.md'), 'utf8');
+
+// True when CLAUDE.md has no project content yet: outside its std blocks it is still
+// the skeleton (a new, empty or freshly scaffolded repository).
+export function isUnfilledClaude(text) {
+  const outside = (t) => applyBlocks(t.replace(/\r\n/g, '\n'), Object.fromEntries(BLOCK_NAMES.map((n) => [n, '']))).trim();
+  return outside(text) === outside(claudeSkeleton());
+}
 
 // Command names that adoption pre-fills from package.json scripts.
 export const COMMAND_CANDIDATES = {

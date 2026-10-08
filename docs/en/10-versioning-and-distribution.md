@@ -115,7 +115,7 @@ The workflow uses the App when `STANDARD_APP_CLIENT_ID` is set, and the fallback
 
 ## 6. Adopting the standard for the first time
 
-Run the adoption script from the project repository (see 00-quickstart):
+Run the adoption script from the project repository (see 00-quickstart). How to read the dry run, the decision loop and a worked example: README, [Running adoption](../../README.md#running-adoption). A new project: [12](12-new-project.md).
 
 ```bash
 node <path-to-standard>/scripts/adopt.mjs --profile <strict|standard> --dry-run
@@ -144,6 +144,7 @@ Review, then apply:
 - `--yes` recomputes the plan. If the hash differs from the reviewed one (a file edited in between, another flag, a new standard version), it stops and asks for a new `--dry-run`. `--plan <hash>` requires a specific plan instead of the recorded one.
 - Before it changes any existing file, `--yes` requires a git repository with a clean working tree, on a branch other than the default branch; otherwise it stops and prints the exact git commands. Creating new files has no such condition.
 - Running `--yes` again, or `--dry-run` after it, reports "Nothing to do".
+- A later run fills commands that are still `null` in `.claude/project.json` from `package.json` scripts (for example after scaffolding an empty repository, doc 12) and lists them under "Commands filled from package.json". Commands already set are never replaced.
 - Configuration choices (stack, profile, `--repo-owner`, `--with-docs`) are stored in `.claude/project.json`. On a later run each value comes from a flag, then `project.json`, then detection, then the default, and `--dry-run` prints the source of each. A later run with a flag changes only that value: `project.json` keeps its other keys, the settings and `std:` blocks are regenerated, and standard files the new selection no longer needs are removed. It requires the repository to be on the same version of the standard (update first). Update pull requests read the same values, including `repoOwner` for the `CODEOWNERS` block. Every option: README, "Adoption options" (generated from `scripts/lib/adopt-options.mjs`; `adopt.mjs --help` prints the same list).
 
 What is automatic:
@@ -163,6 +164,7 @@ What stops for a decision (listed under "Decisions required" with the flag; `--y
 Also:
 
 - It refuses to run while the standard's own `CODEOWNERS` block still has placeholder owners.
+- The checkout of the standard it runs from must be a release: a clean working tree, HEAD on the tag `v<version>` of its `package.json`, and `package.json` equal to `templates/.claude/STANDARD_VERSION`. `--dry-run` prints `Standard checkout: <tag>` and, when it is not a release, a warning with the git commands that fix it; `--yes` refuses. `--allow-unreleased` (maintainers testing unreleased changes) lifts the refusal and is printed in both outputs. `sync-standard.mjs` run by hand applies the same check, and its summary records the override; in GitHub Actions the update job checks the tag against the version instead.
 - It never commits, pushes, installs packages or uses the network.
 - To undo before committing: `git restore .` and `git clean -fd` (check first with `git clean -nd`).
 - Afterwards the owner of the standard adds the repository to `standard-targets.json`.

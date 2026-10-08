@@ -127,6 +127,13 @@ export const OPTIONS = [
     vi: 'Dùng với `--yes`: yêu cầu đúng plan hash này.'
   },
   {
+    name: 'allow-unreleased', value: null, kind: 'run',
+    default: { en: 'off: `--yes` refuses a standard checkout that is dirty or not on its release tag', vi: 'tắt: `--yes` từ chối checkout standard chưa sạch hoặc không ở đúng tag release' },
+    persisted: { en: 'not stored (printed in the output)', vi: 'không lưu (in ra trong output)' },
+    en: 'For maintainers testing unreleased changes of the standard: run from a checkout that is not a clean release. Printed prominently in `--dry-run` and `--yes`.',
+    vi: 'Cho maintainer thử thay đổi chưa release của standard: chạy từ checkout không phải bản release sạch. Được in rõ trong `--dry-run` và `--yes`.'
+  },
+  {
     name: 'target', value: () => '<dir>', kind: 'run',
     default: { en: 'current directory', vi: 'thư mục hiện tại' },
     persisted: { en: 'not stored', vi: 'không lưu' },
