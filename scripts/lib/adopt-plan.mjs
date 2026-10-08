@@ -76,7 +76,8 @@ export function buildPlan(ctx) {
   } else {
     project = { ...config, hooks: false, commands, permissions: { allow: [], ask: [], deny: [] } };
     if (exists('.claude/settings.json')) {
-      merge = mergeSettings(read('.claude/settings.json'), composeSettings(base, project).settings, allowChoices);
+      const scripts = exists('package.json') ? (JSON.parse(read('package.json')).scripts || {}) : {};
+      merge = mergeSettings(read('.claude/settings.json'), composeSettings(base, project).settings, allowChoices, scripts);
       project.permissions = merge.extra;
       for (const d of merge.decisions) decisions.push({ ...d, proposable: d.kind !== 'allow' });
     }
@@ -131,6 +132,7 @@ export function buildPlan(ctx) {
     const found = findBlock(before);
     change(coPath, found ? before.slice(0, found.start) + block + before.slice(found.end) : appendBlock(before, block));
     manifest[`${coPath}${CODEOWNERS_KEY}`] = hash(block);
+    if (!repoOwner) suggestions.push(`${coPath}: guard files (package.json, tool configs, .husky/, .github/workflows/, .claude/project.json) get no code owner from the standard block; pass --repo-owner @org/team so changes to them need the owner's review.`);
   } else if (!repoOwner) {
     decisions.push({ file: '.github/CODEOWNERS', what: 'needs the owner of this repository\'s project files', resolve: 'pass --repo-owner @org/team (or @user)' });
   } else {

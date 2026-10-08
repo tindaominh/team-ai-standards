@@ -1,6 +1,6 @@
 {
   "name": "team-ai-standards",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "description": "Team AI-assisted development standard (docs in English and Vietnamese, repository templates).",
   "type": "module",

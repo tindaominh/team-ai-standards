@@ -40,6 +40,8 @@ Quy tắc:
 Quy tắc thực tế:
 
 - Không bao giờ dán secret, dữ liệu cá nhân hay dữ liệu production vào prompt, vào ticket mà bạn nhờ AI đọc, hoặc vào file mà AI có thể đọc.
+- Khi làm việc với AI, không để secret thật trong file `.env` nằm trong repository: các file này chỉ chứa giá trị local hoặc giả, còn secret thật được inject lúc chạy từ CLI của password manager hoặc một secret store tương tự. Test, script và config của tool mà AI chạy có thể đọc mọi file trong working copy (05, mục 3).
+- Credential cloud trên máy bạn phải có thời hạn ngắn (SSO hoặc session assume role) hoặc được bảo vệ bằng MFA. Không có access key dài hạn trên máy developer.
 - Dùng dữ liệu giả lập cho test, ví dụ và debug. Nếu cần tái hiện bug trên production, hãy dựng lại case đó bằng giá trị giả.
 - Không đưa tên khách hàng, thuật ngữ nghiệp vụ riêng của khách hàng hay code vào các lượt tìm kiếm web thực hiện qua AI.
 - Khi phát hiện công cụ AI đã nhìn thấy thứ không được phép, làm theo các bước xử lý sự cố trong 05-security-guidelines. Không được che giấu.

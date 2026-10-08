@@ -88,8 +88,17 @@ Use this checklist when reviewing any PR in which AI helped. The bar is the same
 - [ ] The guard is real: the named test fails without the fix (see the test evidence), or the CI step, lint rule, type or constraint would have caught the original bug.
 - [ ] New CI checks, regression tests and permission deny rules carry a short comment naming the failure they prevent (with the ticket key if any). A PR that removes or weakens one of these guards answers that comment.
 
+## 12. Guard files
+
+Guard files change what the commands the AI may run without asking actually do, or weaken the guardrails (05, section 3). The AI cannot edit them without asking, and `CODEOWNERS` gives them to the repository's owner, but a change approved once in a session still reaches the diff. Check them with extra care:
+
+- [ ] `package.json` (every one, also in subfolders): new or changed scripts, `pre`/`post` hooks, scripts that call other scripts, new dependencies.
+- [ ] Tool configs that allowed commands execute (`eslint.config.*`, `.eslintrc*`, `vitest.config.*`, `jest.config.*`, `tsconfig*.json`): no `require` or `import` of new local files, setup files, plugins or global setup that reach the network, credentials or files outside the repository.
+- [ ] `.husky/**` and `.github/workflows/**`: no new commands that run on commit or in CI without a reason; jobs that use secrets keep their GitHub environment (09).
+- [ ] `.claude/project.json` and `.claude/rules/local/**`: no loosened permission rule, no new `allow` rule for a command the profile asks about, no rule that tells the AI to ignore the standard.
+
 ## Outcome
 
 - **Approve:** all applicable items pass.
-- **Request changes:** any item in sections 2–7 fails, or a bug-fix PR has an empty or unconvincing regression guard, or the PR removes or weakens a guard without answering its comment (section 11).
+- **Request changes:** any item in sections 2–7 or 12 fails, or a bug-fix PR has an empty or unconvincing regression guard, or the PR removes or weakens a guard without answering its comment (section 11).
 - **Comment:** questions only.

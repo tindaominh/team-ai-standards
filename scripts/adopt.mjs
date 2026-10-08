@@ -28,10 +28,11 @@ import { dirname, join, resolve } from 'node:path';
 import { helpText, parseArgs } from './lib/adopt-options.mjs';
 import { buildPlan } from './lib/adopt-plan.mjs';
 import { unifiedDiff } from './lib/diff.mjs';
+import { formatChain } from './lib/script-chain.mjs';
 import { gitProblems, standardRelease } from './lib/git.mjs';
 import {
   COMMAND_CANDIDATES, DIMENSIONS, FLAG_FOR, ROOT, codeownersPlaceholders, describe, detect, expandAlias, hash,
-  isUnfilledClaude, normalize, registry, summary, validate, version
+  ENVIRONMENT_NOTE, isUnfilledClaude, keptOptional, normalize, registry, summary, validate, version, workflowEnvironments
 } from './lib/standard.mjs';
 
 const argv = process.argv.slice(2);
@@ -114,6 +115,14 @@ if (opts['data-access']) { selection.dataAccess = opts['data-access']; sources.d
 if (opts.with) { selection.optional = opts.with; sources.optional = 'flag'; }
 if (opts['without-optional']) { selection.optional = []; sources.optional = 'flag'; }
 selection = normalize(selection);
+// Optional fragments that were common rules before 0.8.0: a re-run records them unless a flag decides.
+if (previous && sources.optional === 'project.json' && exists('.claude/std/manifest.json')) {
+  const kept = keptOptional(Object.keys(JSON.parse(read('.claude/std/manifest.json')).files || {}), selection);
+  if (kept.length) {
+    selection = normalize({ ...selection, optional: [...selection.optional, ...kept] });
+    sources.optional = `project.json + ${kept.join(', ')} (installed before it became optional)`;
+  }
+}
 
 const reg = registry().dimensions;
 const options = () => DIMENSIONS.map((d) => `  ${d.padEnd(11)} ${Object.keys(reg[d].values).join(' | ')}`).join('\n');
@@ -238,7 +247,8 @@ if (merge) {
     const label = { covered: 'covered', unsafe: 'unsafe — cannot be carried', carried: 'carried', dropped: 'dropped', 'needs-decision': 'needs decision' };
     const width = Math.max(...merge.allowReport.map((r) => label[r.status].length));
     for (const r of merge.allowReport) {
-      const why = r.status === 'covered' ? `  (by ${r.by})` : r.status === 'unsafe' ? `  (profile ${r.list === 'deny' ? 'denies' : 'asks'} ${r.by})` : r.hint ? `  — ${r.hint}` : '';
+      const flagged = `profile ${r.list === 'deny' ? 'denies' : 'asks'} ${r.by}`;
+      const why = r.status === 'covered' ? `  (by ${r.by})` : r.status === 'unsafe' ? `  (${r.chain ? `${formatChain(r.chain)} (${flagged})` : flagged})` : r.hint ? `  — ${r.hint}` : '';
       console.log(`  ${label[r.status].padEnd(width)}  ${r.rule}${why}`);
     }
   }
@@ -253,6 +263,10 @@ if (!previous) {
   console.log('\nCommands filled from package.json (they were not set in .claude/project.json; set commands are never replaced):');
   for (const [key, name] of Object.entries(matched)) console.log(`  ${key.padEnd(19)} ${commands[key]}  ← ${name === 'lockfile' ? 'lockfile' : `"${name}"`}`);
 }
+// Workflows that read secrets run in GitHub environments; adopt cannot check the plan or settings.
+const environments = workflowEnvironments(actions.map((x) => ({ path: x.path, content: x.after })));
+const environmentLines = () => [...environments.map((e) => `  ${e.name.padEnd(16)} ${e.path}`), `  ${ENVIRONMENT_NOTE}`];
+if (environments.length) console.log(`\nGitHub environments (not checked: adopt cannot see your GitHub plan or settings):\n${environmentLines().join('\n')}`);
 if (suggestions.length) {
   console.log('\nOptional cleanup (never done automatically):');
   for (const s of suggestions) console.log(`  - ${s}`);
@@ -314,6 +328,7 @@ if (claudeNow && isUnfilledClaude(claudeNow)) {
 } else if (todos) steps.push(`Fill in ${todos} TODO(adopt) item(s) in CLAUDE.md (about 20 minutes).`);
 if (missing.length && !previous) steps.push(`Set these commands in .claude/project.json, or leave them null if the repository has none: ${missing.join(', ')}. Then run: node .claude/std/compose-settings.mjs`);
 if (proposals.length) steps.push('Merge the proposed file(s): see .claude/std-adoption-checklist.md');
+if (environments.length) steps.push(`Before these workflows run, configure their GitHub environments (${[...new Set(environments.map((e) => e.name))].join(', ')}). ${ENVIRONMENT_NOTE}`);
 if (!/settings\.local\.json/.test(gitignore)) steps.push('Add .claude/settings.local.json to .gitignore.');
 steps.push('Review with git diff; to undo everything: git restore . && git clean -fd (check first with git clean -nd).');
 steps.push(previous ? 'Commit and open a PR.' : 'Commit, open a PR, and ask the owner of the standard to add this repository to .github/standard-targets.json.');

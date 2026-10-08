@@ -93,6 +93,10 @@
             "cdk",
             "terraform"
           ]
+        },
+        "marketplace": {
+          "label": "Marketplace integration rule",
+          "detect": []
         }
       }
     }

@@ -12,6 +12,13 @@
 #     fallback: secret STANDARD_UPDATE_TOKEN (fine-grained token, same scope)
 #   Chat: variable CHAT_PROVIDER = slack (default) | teams,
 #         secret SLACK_WEBHOOK_URL or TEAMS_WEBHOOK_URL
+# Secrets live in the GitHub environment "standard-update", never in repository
+# secrets (STANDARD_APP_CLIENT_ID stays a repository variable), so a workflow changed
+# on an unreviewed branch cannot read them (docs/en/05, "Secret handling"). Before
+# enabling: create the environment with required reviewers (where the plan offers
+# them) and deployment branches and tags limited to v*.*.* tags (plus the default
+# branch only if manual runs are needed), then add the secrets to it. GitHub creates
+# a missing environment on first use with no protection rules.
 name: standard-update
 
 on:
@@ -63,6 +70,7 @@ jobs:
   update:
     needs: plan
     if: needs.plan.outputs.count != '0'
+    environment: standard-update
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -141,6 +149,7 @@ jobs:
   announce:
     needs: [plan, update]
     if: always() && needs.plan.result == 'success'
+    environment: standard-update
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

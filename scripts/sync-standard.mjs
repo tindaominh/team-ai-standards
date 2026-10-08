@@ -27,8 +27,8 @@ import { dirname, join, resolve } from 'node:path';
 import { standardRelease } from './lib/git.mjs';
 import {
   CODEOWNERS_KEY, CODEOWNERS_LOCATIONS, MANAGED_MARKER, OPTIONAL, PR_BLOCK_RE, PR_KEY, codeownersPlaceholders,
-  ROOT, codeownersBlock, coreFiles, findBlock, hash, normalize, optionalFiles, prBlock, prTemplate, summary, unsupportedIn,
-  validate, version
+  ROOT, codeownersBlock, coreFiles, findBlock, hash, keptOptional, normalize, optionalFiles, prBlock, prTemplate, summary, unsupportedIn,
+  validate, version, workflowEnvironments, ENVIRONMENT_NOTE
 } from './lib/standard.mjs';
 import { BLOCK_NAMES, hasBlock } from '../templates/.claude/std/compose.mjs';
 
@@ -89,7 +89,13 @@ const manifest = {};
 
 // 1. Core files for the repository's stack, plus the optional groups it chose
 //    (project.json "optionalGroups"; repositories adopted earlier: what the manifest lists)
-const wanted = coreFiles(selection);
+// Optional fragments that were common rules before: kept until project.json records a choice.
+const kept = keptOptional(oldFiles, selection);
+const wanted = coreFiles(kept.length ? normalize({ ...selection, optional: [...selection.optional, ...kept] }) : selection);
+const recordWith = (names) => [...selection.optional, ...names].join(',');
+for (const name of kept) {
+  notManaged.push(`\`${name}\` is now an optional fragment (it was a common rule) and was kept for this repository. Record the choice: \`adopt.mjs --with ${recordWith([name])} --dry-run\` keeps it, ${selection.optional.length ? `\`--with ${recordWith([])}\`` : '`--without-optional`'} removes it.`);
+}
 for (const [group, entries] of Object.entries(OPTIONAL)) {
   const chosen = Array.isArray(project.optionalGroups) ? project.optionalGroups.includes(group) : entries.some(([, dest]) => oldFiles.includes(dest));
   if (chosen) wanted.push(...optionalFiles(group));
@@ -194,6 +200,12 @@ for (const u of unsupportedIn(target)) {
   if (!acknowledged.has(u.dep)) {
     notManaged.push(`\`${u.dep}\` has no ${u.dimension === 'dataAccess' ? 'data-access' : u.dimension} fragment in the standard and is not acknowledged. Add a fragment (docs/en/11-adding-a-stack-fragment.md), or if the stack selection is right, add it to \`acknowledgedUnsupported\` in \`.claude/project.json\`.`);
   }
+}
+
+// Workflows that run in GitHub environments: the update cannot check the plan or settings.
+const environments = workflowEnvironments(wanted);
+if (environments.length) {
+  notManaged.push(`Workflows reference GitHub environments: ${environments.map((e) => `\`${e.name}\` (\`${e.path}\`)`).join(', ')}. Check they exist before merging. ${ENVIRONMENT_NOTE}`);
 }
 
 // 6. Version and manifest

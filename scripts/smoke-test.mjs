@@ -9,7 +9,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { OPTIONS, helpText, optionsTable } from './lib/adopt-options.mjs';
 import { standardRelease } from './lib/git.mjs';
-import { codeownersBlock } from './lib/standard.mjs';
+import { formatChain, resolveChain, splitCommands } from './lib/script-chain.mjs';
+import { GUARD_FILES, codeownersBlock } from './lib/standard.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const T = join(ROOT, 'templates');
@@ -611,6 +612,85 @@ try {
   check('re-run: the CLAUDE.md commands block and settings follow', readFileSync(join(emptyRepo, 'CLAUDE.md'), 'utf8').includes('`<build-cmd>`: `pnpm build`') && compose(emptyRepo, '--check').status === 0);
   check('re-run: still a new project, so the next steps point to doc 12', newProjectSteps(refillYes.stdout), refillYes.stdout);
   check('re-run: a second re-run has nothing to do', adopt(emptyRepo, '--dry-run').stdout.includes('Nothing to do'));
+
+  // 2j. 0.8.0: package-script chains, hints, guard files, marketplace as an optional fragment
+  const flaggedBy = (c) => (/^cdk\b/.test(c) ? { rule: 'Bash(cdk *)', list: 'ask' } : /^npm run deploy/.test(c) ? { rule: 'Bash(npm run deploy*)', list: 'deny' } : null);
+  const chainOf = (cmd, scripts) => resolveChain(cmd, scripts, flaggedBy);
+  check('script chain: splits on && || ; | & outside quotes', same(splitCommands('a && b || c; d | e & f "x && y"'), ['a', 'b', 'c', 'd', 'e', 'f "x && y"']));
+  check('script chain: nested pnpm scripts reach cdk synth', formatChain(chainOf('pnpm verify', { verify: 'pnpm check', check: 'cross-env AWS_PROFILE=dev cdk synth' }).chain) === 'pnpm verify → pnpm check → cdk synth');
+  check('script chain: npm run reaches a denied deploy', chainOf('npm run release', { release: 'npm test && npm run deploy:prod', test: 'jest' }).hit.list === 'deny');
+  check('script chain: npm runs pre hooks', formatChain(chainOf('npm run build', { prebuild: 'cdk synth', build: 'tsc' }).chain) === 'npm run build → (prebuild) → cdk synth');
+  check('script chain: pnpm does not run pre hooks', chainOf('pnpm build', { prebuild: 'cdk synth', build: 'tsc' }).hit === null);
+  check('script chain: run-s expands patterns', formatChain(chainOf('yarn all', { all: 'run-s lint:*', 'lint:a': 'eslint .', 'lint:infra': 'cdk synth -q' }).chain) === 'yarn all → run-s lint:* → npm run lint:infra → cdk synth -q');
+  const cyc = chainOf('npm run a', { a: 'npm run b', b: 'npm run a && eslint .' });
+  check('script chain: a cycle terminates', cyc.hit === null && same(cyc.cycles, ['a']) && same(cyc.leaves, ['eslint .']));
+  check('script chain: missing scripts are reported', same(chainOf('npm run a', { a: 'npm run gone' }).missing, ['gone']));
+  check('script chain: not a package script', chainOf('make test', {}) === null && chainOf('yarn nope', {}) === null);
+
+  const chainScripts = { verify: 'pnpm check && pnpm test', check: 'cdk synth', test: 'jest', ci: 'pnpm lint && pnpm test', lint: 'eslint .', release: 'pnpm run deploy:prod', 'deploy:prod': 'cdk deploy' };
+  const chainAllow = ['Bash(pnpm verify)', 'Bash(pnpm run release *)', 'Bash(pnpm ci)', 'Bash(make test *)', 'Edit(src/**)'];
+  const chainRepo = gitRepo(newRepo('existing-chain', { 'package.json': pkg(nestDeps, chainScripts), 'pnpm-lock.yaml': '', '.claude/settings.json': `${JSON.stringify({ permissions: { allow: chainAllow } })}\n`, '.github/CODEOWNERS': '* @org/team\n' }));
+  const chainDry = adopt(chainRepo, '--stack', 'nestjs-mysql', '--dry-run');
+  check('adopt: an allow whose package script runs an asked command is unsafe, with the chain', chainDry.stdout.includes('Bash(pnpm verify)  (pnpm verify → pnpm check → cdk synth (profile asks Bash(cdk *)))'), chainDry.stdout);
+  check('adopt: an allow whose package script runs a denied command is unsafe', /unsafe — cannot be carried\s+Bash\(pnpm run release \*\)\s+\(pnpm run release → pnpm run deploy:prod \(profile denies/.test(chainDry.stdout), chainDry.stdout);
+  check('adopt: a safe package script needs a decision, with what it runs as hint', /needs decision\s+Bash\(pnpm ci\)\s+— runs a package script: eslint \., jest/.test(chainDry.stdout), chainDry.stdout);
+  check('adopt: every rule that needs a decision has a hint', /needs decision\s+Bash\(make test \*\)\s+— runs repository code/.test(chainDry.stdout), chainDry.stdout);
+  check('adopt: a broad Edit allow is unsafe (it overlaps the profile\'s secret and guard-file rules)', /unsafe — cannot be carried\s+Edit\(src\/\*\*\)/.test(chainDry.stdout), chainDry.stdout);
+  const chainCarry = adopt(chainRepo, '--stack', 'nestjs-mysql', '--carry-allow', 'Bash(pnpm verify)', '--dry-run');
+  check('adopt: carrying an allow whose script runs an asked command is refused', chainCarry.stdout.includes('allow Bash(pnpm verify) cannot be carried: it runs cdk synth through pnpm verify → pnpm check (profile asks Bash(cdk *))'), chainCarry.stdout);
+  check('adopt: no hint-less rule is printed', !/needs decision\s+\S+\s*$/m.test(chainDry.stdout));
+
+  for (const p of ['strict', 'standard']) {
+    const base = JSON.parse(readFileSync(join(T, `.claude/std/settings.${p}.json`), 'utf8'));
+    check(`profile ${p}: asks before editing every guard file`, GUARD_FILES.every((g) => base.permissions.ask.includes(`Edit(${g.rule})`)));
+    check(`profile ${p}: no Write(...) path rules (Claude Code never consults them)`, !JSON.stringify(base).includes('Write('));
+  }
+  const guardBlock = codeownersBlock('@org/svc');
+  check('CODEOWNERS: guard files belong to the project owner, before the standard lines', GUARD_FILES.every((g) => guardBlock.includes(`${g.codeowners.padEnd(26)}@org/svc`)) && guardBlock.indexOf('/.github/workflows/ ') < guardBlock.indexOf('/.github/workflows/std-check.yml'));
+
+  // Jobs that read secrets must use a GitHub environment (doc 05): one job per "  name:" block.
+  for (const file of [...readdirSync(join(T, '.github/workflows')).map((f) => join(T, '.github/workflows', f)), ...readdirSync(join(ROOT, '.github/workflows')).map((f) => join(ROOT, '.github/workflows', f))]) {
+    const text = readFileSync(file, 'utf8');
+    const jobs = text.slice(text.indexOf('\njobs:')).split(/\n(?= {2}[A-Za-z0-9_-]+:\s*$)/m).slice(1);
+    const bad = jobs.filter((j) => /secrets\.(?!GITHUB_TOKEN)/.test(j) && !/\n {4}environment:/.test(j)).map((j) => j.trim().split(':')[0]);
+    check(`workflow ${file.slice(ROOT.length)}: jobs that use secrets run in an environment`, bad.length === 0, bad.join(', '));
+  }
+
+  // marketplace: optional; repositories that had the common rule keep it until they record a choice
+  const mkt = gitRepo(newRepo('marketplace-legacy', { 'package.json': pkg(nestDeps, nestScripts) }));
+  apply(mkt, '--stack', 'nestjs-mysql');
+  check('marketplace: a new adoption without --with marketplace does not install it', !existsSync(join(mkt, '.claude/rules/std/fragments/optional-marketplace.md')) && !existsSync(join(mkt, '.claude/rules/std/common/marketplace-integration.md')));
+  const legacyPath = '.claude/rules/std/common/marketplace-integration.md';
+  writeFileSync(join(mkt, legacyPath), '# Marketplace integration (0.7)\n');
+  const mktManifest = JSON.parse(readFileSync(join(mkt, '.claude/std/manifest.json'), 'utf8'));
+  mktManifest.files[legacyPath] = createHash('sha256').update('# Marketplace integration (0.7)\n').digest('hex');
+  writeFileSync(join(mkt, '.claude/std/manifest.json'), `${JSON.stringify(mktManifest, null, 2)}\n`);
+  const mktProjectBefore = readFileSync(join(mkt, '.claude/project.json'), 'utf8');
+  const mktSync = run('node', [SYNC, '--target', mkt]);
+  check('marketplace: sync of a repository that had the common rule keeps it as a fragment', mktSync.status === 0 && existsSync(join(mkt, '.claude/rules/std/fragments/optional-marketplace.md')) && !existsSync(join(mkt, legacyPath)), mktSync.stdout + mktSync.stderr);
+  check('marketplace: sync reports the choice to record and leaves project.json alone', mktSync.stdout.includes('`marketplace` is now an optional fragment') && mktSync.stdout.includes('--with aws,marketplace') && readFileSync(join(mkt, '.claude/project.json'), 'utf8') === mktProjectBefore, mktSync.stdout);
+  const mktCheck = compose(mkt, '--check');
+  check('marketplace: std-check passes after the sync, without a stack warning', mktCheck.status === 0 && !mktCheck.stderr.includes('stack selection'), mktCheck.stdout + mktCheck.stderr);
+  gitIn(mkt, 'add', '-A');
+  gitIn(mkt, 'commit', '-q', '-m', 'sync');
+  const mktDry = adopt(mkt, '--dry-run');
+  check('marketplace: an adopt re-run keeps it and names the source', /optional\s+aws, marketplace\s+project\.json \+ marketplace/.test(mktDry.stdout), mktDry.stdout + mktDry.stderr);
+  const mktYes = adopt(mkt, '--yes');
+  check('marketplace: the re-run records it in project.json', mktYes.status === 0 && same(stackOf(mkt).optional, ['aws', 'marketplace']), mktYes.stdout + mktYes.stderr);
+  gitIn(mkt, 'add', '-A');
+  gitIn(mkt, 'commit', '-q', '-m', 'record');
+  const mktDrop = adopt(mkt, '--with', 'aws', '--dry-run');
+  check('marketplace: --with without it removes the fragment', /delete\s+\.claude\/rules\/std\/fragments\/optional-marketplace\.md/.test(mktDrop.stdout), mktDrop.stdout + mktDrop.stderr);
+
+  // GitHub environments: adopt and sync list them, since neither can check the plan or settings
+  const envRepo = gitRepo(newRepo('environments', { 'package.json': pkg(nestDeps, nestScripts) }));
+  const envDry = adopt(envRepo, '--stack', 'nestjs-mysql', '--with-docs', ...OWNER, '--dry-run');
+  check('adopt --with-docs: lists the GitHub environment the workflows need, with the plan note', /GitHub environments \(not checked[^\n]*\n\s+docs-notify\s+\.github\/workflows\/docs-notify\.yml/.test(envDry.stdout) && envDry.stdout.includes('GitHub Free cannot protect environments'), envDry.stdout);
+  const envYes = adopt(envRepo, '--stack', 'nestjs-mysql', '--with-docs', ...OWNER, '--yes');
+  check('adopt --with-docs --yes: next steps ask to configure the environment', envYes.status === 0 && envYes.stdout.includes('configure their GitHub environments (docs-notify)'), envYes.stdout + envYes.stderr);
+  check('adopt without docs: no environment note', !adopt(newRepo('environments-none', { 'package.json': pkg(nestDeps, nestScripts) }), '--stack', 'nestjs-mysql', ...OWNER, '--dry-run').stdout.includes('GitHub environments'));
+  const envSync = run('node', [SYNC, '--target', envRepo]);
+  check('sync: the update summary asks to check the environments before merging', envSync.status === 0 && envSync.stdout.includes('Workflows reference GitHub environments: `docs-notify`'), envSync.stdout + envSync.stderr);
 
   // 2k. the real standard (not a fixture) adopts and syncs when its CODEOWNERS names a real owner
   const liveBlock = blockOf(readFileSync(join(T, '.github/CODEOWNERS'), 'utf8'));

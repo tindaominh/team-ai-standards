@@ -2,7 +2,7 @@
 
 ## Mục đích
 
-Một fragment dạy AI về một phần trong stack của repository: một framework, một database, một thư viện data access, hoặc một mảng tuỳ chọn như AWS. Các repository ghép các fragment lại với nhau, nên thêm một giá trị (ví dụ Koa hoặc Kysely) không làm số file tăng theo cấp số nhân. Tài liệu này dành cho người mở rộng bộ tiêu chuẩn; developer chỉ áp dụng bộ tiêu chuẩn thì không cần đọc.
+Một fragment dạy AI về một phần trong stack của repository: một framework, một database, một thư viện data access, hoặc một mảng tuỳ chọn như AWS hay tích hợp marketplace. Các repository ghép các fragment lại với nhau, nên thêm một giá trị (ví dụ Koa hoặc Kysely) không làm số file tăng theo cấp số nhân. Tài liệu này dành cho người mở rộng bộ tiêu chuẩn; developer chỉ áp dụng bộ tiêu chuẩn thì không cần đọc.
 
 ## Fragment hoạt động thế nào
 

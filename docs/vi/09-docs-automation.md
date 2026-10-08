@@ -98,7 +98,7 @@ Workflow: `templates/.github/workflows/docs-ai-proposal.yml`. **Mặc định t�
 
 - Phê duyệt bằng văn bản của security owner. Không bao giờ bật trong repository của khách hàng, trừ khi quan điểm về AI bằng văn bản của khách hàng cho phép.
 - CLI được cài từ một file `tools/docs-ai/package.json` đã commit (template: `templates/tools/docs-ai/package.json`) kèm `package-lock.json` đã được review, bằng lệnh `npm ci --ignore-scripts`. npm kiểm tra mọi package theo integrity hash trong lockfile và không chạy install script nào. **Không bao giờ dùng `npx`.** Tạo lockfile bằng `npm install --package-lock-only --ignore-scripts --prefix tools/docs-ai`. Vì install script bị bỏ qua, workflow khởi chạy CLI qua `cli-wrapper.cjs` của package.
-- Secret `ANTHROPIC_API_KEY` từ tài khoản công ty, và biến repository `DOCS_AI_PROPOSAL_ENABLED=true`.
+- GitHub environment `docs-ai`, có required reviewer và giới hạn deployment branch ở branch mặc định, chứa `ANTHROPIC_API_KEY` từ tài khoản công ty dưới dạng environment secret (không bao giờ là secret của repository; 05, mục 6). Với repository private, điều này cần GitHub Pro, Team hoặc Enterprise, còn required reviewer cần GitHub Enterprise (05, mục 6.1). Và biến repository `DOCS_AI_PROPOSAL_ENABLED=true`.
 
 Chức năng: sau một lần merge vào `main` không đụng tới `docs/`, Claude Code đọc các file đã thay đổi và có thể đề xuất cập nhật tài liệu dưới dạng một **pull request riêng**.
 
@@ -112,6 +112,7 @@ Guardrail:
 | Không tự động đồng ý | Các yêu cầu cấp quyền không có ai trả lời sẽ bị từ chối (`--permission-prompts none`) |
 | Giới hạn | Số lượt tối đa và ngân sách chi phí cho mỗi lần chạy; timeout cho job |
 | Không để credential trong tầm với | Checkout không lưu credential; token chỉ dùng ở bước push cuối cùng |
+| Secret sau bước review | Job chạy trong environment `docs-ai`; workflow bị sửa trên branch chưa review không đọc được API key |
 | Kiểm tra phạm vi | Job fail nếu có file nào ngoài `docs/` bị thay đổi |
 | Kiểm tra secret | Job fail nếu diff khớp với các pattern secret thường gặp |
 | Không bao giờ vào main | Chỉ push một branch mới `docs-ai/<sha>` và mở PR |
@@ -126,7 +127,7 @@ Workflow: `templates/.github/workflows/docs-notify.yml`.
 - Kích hoạt: push lên `main` có đụng tới `docs/**`, `CLAUDE.md` hoặc `.claude/**`.
 - Nội dung tin nhắn: repository, tiêu đề commit, tác giả, đường dẫn các file đã thay đổi (tối đa 20) và một link. Không bao giờ có nội dung file hay diff.
 - **Slack là provider mặc định.** Microsoft Teams là phương án thay thế đã làm sẵn: đặt biến repository `CHAT_PROVIDER=teams` để chuyển từ bước Slack sang bước Teams.
-- Webhook URL chỉ lấy từ GitHub Secrets: `SLACK_WEBHOOK_URL` hoặc `TEAMS_WEBHOOK_URL`. Không bao giờ đặt chúng trong file. Hãy rotate webhook nếu nó từng bị lộ.
+- Webhook URL chỉ lấy từ GitHub Secrets: `SLACK_WEBHOOK_URL` hoặc `TEAMS_WEBHOOK_URL`, lưu dưới dạng secret của environment `docs-notify` (có required reviewer nếu gói cho phép, giới hạn deployment branch ở branch mặc định), không bao giờ là secret của repository (05, mục 6). Yêu cầu về gói với repository private: environment secret và deployment branch cần GitHub Pro, Team hoặc Enterprise, còn required reviewer cần GitHub Enterprise. Trên GitHub Free, environment vẫn tồn tại nhưng không chặn gì, nên không bật job này ở đó nếu chưa có phê duyệt bằng văn bản của security owner (05, mục 6.1). Không bao giờ đặt chúng trong file. Hãy rotate webhook nếu nó từng bị lộ.
 - Nếu secret của provider được chọn chưa được đặt, job ghi một notice vào log và không làm gì.
 - Provider khác: thêm một bước theo cùng pattern (tin nhắn lấy từ file, URL hoặc token lấy từ secret), sau khi security owner phê duyệt.
 
@@ -151,5 +152,6 @@ Workflow: `templates/.github/workflows/docs-notify.yml`.
 - [ ] Thêm marker ở những chỗ cần bảng sinh tự động; chạy generator; commit.
 - [ ] Tạo label `docs-not-needed`.
 - [ ] Điền owner trong `CODEOWNERS` và bật code-owner review.
-- [ ] Tuỳ chọn: đặt `SLACK_WEBHOOK_URL` cho `docs-notify.yml` (hoặc `CHAT_PROVIDER=teams` và `TEAMS_WEBHOOK_URL`).
+- [ ] Trước khi bất kỳ job nào dùng secret chạy: tạo GitHub environment của nó (`docs-notify`, sau này `docs-ai`) với required reviewer nếu gói cho phép và giới hạn deployment branch ở branch mặc định. GitHub tự tạo environment còn thiếu ở lần chạy đầu mà không có protection rule (05, mục 6). Kiểm tra gói trước (05, mục 6.1). Với repository private trên GitHub Pro hoặc Team thì không có required reviewer, nên giới hạn deployment branch ở branch mặc định đã được bảo vệ là biện pháp kiểm soát duy nhất. Trên GitHub Free environment không chặn gì: không bật các job này nếu chưa có phê duyệt bằng văn bản của security owner.
+- [ ] Tuỳ chọn: đặt `SLACK_WEBHOOK_URL` cho `docs-notify.yml` (hoặc `CHAT_PROVIDER=teams` và `TEAMS_WEBHOOK_URL`) làm secret của environment `docs-notify`.
 - [ ] Không làm trong pilot. Về sau, chỉ khi security owner đã phê duyệt: copy `docs-ai-proposal.yml` và `tools/docs-ai/package.json`, commit lockfile, rồi bật job.

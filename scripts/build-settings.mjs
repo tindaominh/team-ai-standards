@@ -15,6 +15,7 @@
 // .claude/project.json; rules whose command is not set are left out.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { GUARD_FILES } from './lib/standard.mjs';
 
 const OUT = new URL('../templates/.claude/std/', import.meta.url).pathname;
 const bash = (cmd) => `Bash(${cmd})`;
@@ -43,7 +44,13 @@ const ask = [
     'yarn dev', 'yarn run dev', 'yarn start', 'yarn run start', 'yarn serve', 'yarn watch',
     'npm run cdk', 'pnpm cdk', 'pnpm run cdk', 'yarn cdk'].map((c) => bash(`${c}*`)),
   ...['next dev', 'nest start', 'vite', 'cdk', 'terraform', 'sam', 'serverless', 'sls', 'pulumi', 'copilot', 'eb']
-    .map((c) => bash(`${c} *`))
+    .map((c) => bash(`${c} *`)),
+  // Guard files: they change what allowed commands run (package scripts, tool configs,
+  // git hooks, workflows) or weaken guardrails (project rules). Claude Code docs: "`Edit`
+  // rules apply to all built-in tools that edit files", and a path rule for `Write` is
+  // "never consulted", so only Edit(...) is used. "/path" is relative to the settings
+  // source (the repository root for .claude/settings.json); "**/" matches at any depth.
+  ...GUARD_FILES.map((g) => `Edit(${g.rule})`)
 ];
 
 const secretPaths = [

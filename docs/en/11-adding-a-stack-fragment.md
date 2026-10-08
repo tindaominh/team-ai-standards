@@ -2,7 +2,7 @@
 
 ## Purpose
 
-A fragment teaches the AI one part of a repository's stack: a framework, a database, a data-access library, or an optional area such as AWS. Repositories combine fragments, so adding one value (for example Koa, or Kysely) does not multiply files. This document is for whoever extends the standard; developers who only adopt it do not need it.
+A fragment teaches the AI one part of a repository's stack: a framework, a database, a data-access library, or an optional area such as AWS or marketplace integration. Repositories combine fragments, so adding one value (for example Koa, or Kysely) does not multiply files. This document is for whoever extends the standard; developers who only adopt it do not need it.
 
 ## How fragments work
 

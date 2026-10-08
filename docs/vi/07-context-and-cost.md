@@ -15,7 +15,7 @@ Mọi thứ AI load vào context đều tốn tiền và tốn sự chú ý. Con
 | `.claude/agents/std-*.md` | Mô tả luôn được load; nội dung chỉ trong subagent | Vai trò cần context mới và tool giới hạn | Những gì session chính cần |
 | `docs/` (bộ tiêu chuẩn này, ADR, runbook) | Chỉ khi có người bảo AI đọc | Giải thích cho người đọc | Chỉ dẫn AI phải luôn tuân theo |
 
-Hiện tại `common/marketplace-integration.md` luôn được load, vì phần lớn công việc của team đụng tới adapter của các kênh bán. Nếu sau pilot ngân sách context bị căng, có thể giới hạn rule này theo đường dẫn tới các thư mục tích hợp (ví dụ `src/channels/**`, `src/orders/**`, `src/stock/**`).
+Từ 0.8.0, tích hợp marketplace là một fragment tuỳ chọn (`--with marketplace`, rule `fragments/optional-marketplace.md`): nó chỉ được load trong repository chọn nó, nên repository không có adapter kênh bán không phải trả chi phí context. Repository từng có nó dưới dạng rule chung vẫn giữ nó cho tới khi ghi lại lựa chọn (10, mục 6).
 
 ## Giới hạn kích thước
 

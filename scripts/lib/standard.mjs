@@ -42,6 +42,22 @@ export const OPTIONAL = {
   ]
 };
 
+// Guard files: editing them changes what allowed commands run (package scripts, tool
+// configs, git hooks, workflows) or weakens guardrails (project rules). Both profiles ask
+// before Edit(rule); the CODEOWNERS block gives them to the project owner (codeowners).
+export const GUARD_FILES = [
+  { rule: '**/package.json', codeowners: 'package.json' },
+  { rule: '/.claude/project.json', codeowners: '/.claude/project.json' },
+  { rule: '/.claude/rules/local/**', codeowners: '/.claude/rules/local/' },
+  { rule: '/.husky/**', codeowners: '/.husky/' },
+  { rule: '/.github/workflows/**', codeowners: '/.github/workflows/' },
+  { rule: '**/eslint.config.*', codeowners: 'eslint.config.*' },
+  { rule: '**/.eslintrc*', codeowners: '.eslintrc*' },
+  { rule: '**/vitest.config.*', codeowners: 'vitest.config.*' },
+  { rule: '**/jest.config.*', codeowners: 'jest.config.*' },
+  { rule: '**/tsconfig*.json', codeowners: 'tsconfig*.json' }
+];
+
 export const hash = (text) => createHash('sha256').update(String(text).replace(/\r\n/g, '\n')).digest('hex');
 
 export function walk(dir) {
@@ -157,6 +173,27 @@ export function unsupportedIn(dir) {
   return Object.entries(registry().unsupported || {}).filter(([dep]) => deps.has(dep)).map(([dep, dimension]) => ({ dep, dimension }));
 }
 
+// Optional fragments that used to be common rules. A repository that had one keeps it
+// until it records a choice: sync and adopt treat it as selected while the manifest lists
+// the old common file or the fragment and .claude/project.json does not select it.
+export const LEGACY_OPTIONAL = {
+  marketplace: ['.claude/rules/std/common/marketplace-integration.md', '.claude/rules/std/fragments/optional-marketplace.md']
+};
+export function keptOptional(manifestFiles, sel) {
+  return Object.entries(LEGACY_OPTIONAL)
+    .filter(([name, paths]) => !sel.optional.includes(name) && paths.some((p) => manifestFiles.includes(p)))
+    .map(([name]) => name);
+}
+
+// GitHub environments referenced by workflow files: [{ path, name }]. Adoption cannot see
+// the repository's GitHub plan or settings (no network), so it lists them for a human.
+export function workflowEnvironments(files) {
+  return files
+    .filter((f) => f.path.startsWith('.github/workflows/') && typeof f.content === 'string')
+    .flatMap((f) => [...f.content.matchAll(/^\s+environment:\s*([\w.-]+)\s*$/gm)].map((m) => ({ path: f.path, name: m[1] })));
+}
+export const ENVIRONMENT_NOTE = 'Create each environment in the repository settings before the workflow runs: secrets as environment secrets, deployment branches limited to the protected default branch, required reviewers where the plan offers them. Private repositories: GitHub Free cannot protect environments (they block nothing), GitHub Pro and Team have no required reviewers (standard doc 05, section 6.1).';
+
 export const FLAG_FOR = { framework: '--framework', databases: '--db', dataAccess: '--data-access', optional: '--with' };
 
 // --- files ---------------------------------------------------------------------
@@ -236,8 +273,8 @@ export function codeownersBlock(repoOwner) {
   if (!repoOwner) return block;
   const lines = block.split('\n');
   const at = lines.findIndex((l) => l !== '' && !l.startsWith('#'));
-  const own = ['/CLAUDE.md', '/.claude/project.json', '/.claude/rules/local/'].map((p) => `${p.padEnd(26)}${repoOwner}`);
-  return [...lines.slice(0, at), '# Project files: owner from .claude/project.json "repoOwner".', ...own, ...lines.slice(at)].join('\n');
+  const own = ['/CLAUDE.md', ...GUARD_FILES.map((g) => g.codeowners)].map((p) => `${p.padEnd(26)}${repoOwner}`);
+  return [...lines.slice(0, at), '# Project files and guard files (they change what allowed commands run): owner from', '# .claude/project.json "repoOwner". Review them with extra care (standard doc 04).', ...own, ...lines.slice(at)].join('\n');
 }
 
 // The standard's CODEOWNERS block must name a real team before any repository adopts.
