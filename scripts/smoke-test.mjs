@@ -4,10 +4,11 @@
 // Works only in temporary directories.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { OPTIONS, helpText, optionsTable } from './lib/adopt-options.mjs';
+import { standardRelease } from './lib/git.mjs';
 import { codeownersBlock } from './lib/standard.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname;
@@ -85,6 +86,7 @@ try {
   const copyStandard = (dir) => {
     cpSync(join(ROOT, 'scripts'), join(dir, 'scripts'), { recursive: true });
     cpSync(T, join(dir, 'templates'), { recursive: true });
+    cpSync(join(ROOT, 'package.json'), join(dir, 'package.json'));
     return dir;
   };
   const setOwners = (dir, owner) => {
@@ -100,6 +102,17 @@ try {
   const fixtureRegistry = JSON.parse(readFileSync(regPath, 'utf8'));
   fixtureRegistry.unsupported = { ...fixtureRegistry.unsupported, ...FIXTURE_UNSUPPORTED };
   writeFileSync(regPath, `${JSON.stringify(fixtureRegistry, null, 2)}\n`);
+  // adopt --yes and sync run only from a released checkout: commit the fixture and tag it.
+  const STD_VERSION = readFileSync(join(T, '.claude/STANDARD_VERSION'), 'utf8').trim();
+  const gitStd = (dir, ...a) => execFileSync('git', ['-c', 'user.name=smoke', '-c', 'user.email=smoke@example.com', '-c', 'commit.gpgsign=false', '-c', 'tag.gpgsign=false', '-c', 'init.defaultBranch=main', ...a], { cwd: dir, encoding: 'utf8' });
+  const release = (dir, tag = `v${STD_VERSION}`) => {
+    gitStd(dir, 'init', '-q');
+    gitStd(dir, 'add', '-A');
+    gitStd(dir, 'commit', '-q', '-m', 'release');
+    gitStd(dir, 'tag', tag);
+    return dir;
+  };
+  release(STD);
   const STD_PLACEHOLDER = copyStandard(join(work, 'standard-placeholder'));
   setOwners(STD_PLACEHOLDER, '@<org>/<ai-standard-owners>');
   const ADOPT = join(STD, 'scripts/adopt.mjs');
@@ -489,6 +502,15 @@ try {
   writeFileSync(staleReadme, readme.replace('| `--profile` |', '| `--profiles` |'));
   const stale2 = run('node', [join(ROOT, 'scripts/generate-readme.mjs'), '--check', '--readme', staleReadme]);
   check('README check: a stale table fails with the command to regenerate', stale2.status === 1 && stale2.stderr.includes('npm run docs:readme'), stale2.stderr);
+  for (const lang of ['en', 'vi']) {
+    const doc12 = readFileSync(join(ROOT, `docs/${lang}/12-new-project.md`), 'utf8');
+    const prompts = readdirSync(join(T, 'prompts')).filter((f) => f.endsWith('.md'));
+    check(`doc 12 (${lang}): shows every prompt file verbatim`, prompts.length === 5 && prompts.every((f) => doc12.includes(readFileSync(join(T, 'prompts', f), 'utf8').trim())));
+  }
+  const staleDoc = join(work, 'stale-doc12.md');
+  writeFileSync(staleDoc, readFileSync(join(ROOT, 'docs/en/12-new-project.md'), 'utf8').replace('When to use: right after adoption', 'When to use: an old wording'));
+  const stale3 = run('node', [join(ROOT, 'scripts/generate-readme.mjs'), '--check', '--prompts-doc', staleDoc]);
+  check('doc 12 check: a stale prompt block fails with the command to regenerate', stale3.status === 1 && stale3.stderr.includes('npm run docs:readme'), stale3.stderr);
   check('dry run: value sources for a new repository', /profile\s+strict\s+default/.test(dry.stdout) && /framework\s+nestjs\s+detected/.test(dry.stdout) && /repo-owner\s+\(none\)\s+default/.test(dry.stdout), dry.stdout);
 
   const reuse = gitRepo(newRepo('reuse', { 'package.json': pkg(nestDeps, nestScripts) }));
@@ -521,15 +543,86 @@ try {
   check('sync: regenerates the CODEOWNERS block from repoOwner in project.json', ownerSync.status === 0 && blockOf(coSynced) === codeownersBlock('@fixture-org/new-team') && coSynced.includes('/infra/  @fixture-org/ops'), ownerSync.stdout + ownerSync.stderr);
   check('sync: keeps the optional groups stored in project.json', existsSync(join(reuse, 'scripts/generate-docs.mjs')) && existsSync(join(reuse, '.github/workflows/docs-check.yml')));
 
+  // 2l. the standard checkout must be a clean release: dry run warns, --yes refuses, the override is printed
+  const STD_REL = join(work, 'standard-rel');
+  cpSync(STD, STD_REL, { recursive: true });
+  const adoptRel = (dir, ...a) => run('node', [join(STD_REL, 'scripts/adopt.mjs'), ...a], { cwd: dir });
+  const nestPkg = { 'package.json': pkg(nestDeps, nestScripts) };
+  const relClean = adoptRel(newRepo('rel-clean', nestPkg), ...OWNER, '--dry-run');
+  check('release: a tagged, clean standard shows its tag and no warning', relClean.status === 0 && relClean.stdout.includes(`Standard checkout: v${STD_VERSION} (`) && !relClean.stdout.includes('not a released version'), relClean.stdout + relClean.stderr);
+  const releaseCase = (label, fix) => {
+    const dir = newRepo(`rel-${label.replace(/\W+/g, '-')}`, nestPkg);
+    const dry = adoptRel(dir, ...OWNER, '--dry-run');
+    check(`release (${label}): --dry-run warns and prints the fix`, dry.status === 0 && dry.stdout.includes('not a released version; --yes will refuse') && dry.stdout.includes(fix), dry.stdout + dry.stderr);
+    const before = listFiles(dir);
+    const yesRel = adoptRel(dir, ...OWNER, '--yes');
+    check(`release (${label}): --yes refuses and writes nothing`, yesRel.status === 3 && yesRel.stderr.includes('not a released version') && yesRel.stderr.includes(fix) && same(listFiles(dir), before), yesRel.stderr);
+    return dir;
+  };
+  writeFileSync(join(STD_REL, 'notes.txt'), 'local change\n');
+  releaseCase('dirty standard checkout', 'stash push -u');
+  const overrideDir = newRepo('rel-override', nestPkg);
+  const overDry = adoptRel(overrideDir, ...OWNER, '--allow-unreleased', '--dry-run');
+  const overYes = adoptRel(overrideDir, ...OWNER, '--allow-unreleased', '--yes');
+  check('release: --allow-unreleased is printed in --dry-run', overDry.status === 0 && overDry.stdout.includes('UNRELEASED STANDARD (--allow-unreleased)') && !overDry.stdout.includes('--yes will refuse'), overDry.stdout);
+  check('release: --allow-unreleased lets --yes apply, and says so', overYes.status === 0 && overYes.stdout.includes('UNRELEASED STANDARD (--allow-unreleased): applied from'), overYes.stdout + overYes.stderr);
+  const syncRel = (env, ...a) => run('node', [join(STD_REL, 'scripts/sync-standard.mjs'), '--target', overrideDir, ...a], { env: { ...process.env, GITHUB_ACTIONS: env } });
+  const syncNo = syncRel('');
+  check('release: sync run by hand refuses an unreleased checkout', syncNo.status === 3 && syncNo.stderr.includes('not a released version'), syncNo.stderr);
+  const syncOver = syncRel('', '--allow-unreleased');
+  check('release: sync --allow-unreleased runs and records it in the summary', syncOver.status === 0 && syncOver.stdout.includes('**Unreleased standard checkout**'), syncOver.stdout + syncOver.stderr);
+  const syncCi = syncRel('true');
+  check('release: sync in GitHub Actions skips the check', syncCi.status === 0 && !syncCi.stdout.includes('Unreleased'), syncCi.stdout + syncCi.stderr);
+  rmSync(join(STD_REL, 'notes.txt'));
+  gitStd(STD_REL, 'commit', '-q', '--allow-empty', '-m', 'unreleased work');
+  releaseCase('HEAD not on a tag', `no tag v${STD_VERSION} on it`);
+  const relPkg = JSON.parse(readFileSync(join(STD_REL, 'package.json'), 'utf8'));
+  writeFileSync(join(STD_REL, 'package.json'), `${JSON.stringify({ ...relPkg, version: '9.9.9' }, null, 2)}\n`);
+  gitStd(STD_REL, 'commit', '-q', '-am', 'bump without release');
+  gitStd(STD_REL, 'tag', '-f', `v${STD_VERSION}`);
+  const mismatchDir = releaseCase('tag and version mismatch', `HEAD is tagged v${STD_VERSION}, not v9.9.9`);
+  check('release (tag and version mismatch): package.json and STANDARD_VERSION disagree', adoptRel(mismatchDir, ...OWNER, '--dry-run').stdout.includes(`package.json (9.9.9) and templates/.claude/STANDARD_VERSION (${STD_VERSION}) disagree`));
+
+  // 2m. next steps: new or freshly scaffolded repositories get doc 12 and the prompts; existing ones do not
+  const newProjectSteps = (out) => ['docs/en/12-new-project.md', 'templates/prompts/01-fill-claude-md.md', 'templates/prompts/02-project-spec.md', 'templates/prompts/03-kickoff-plan.md'].every((p) => out.includes(join(STD, p)));
+  const emptyRepo = newRepo('new-empty');
+  const pathB = ['--framework', 'nestjs', '--db', 'mysql', '--data-access', 'typeorm', '--without-optional'];
+  const emptyYes = apply(emptyRepo, ...pathB);
+  check('next steps: empty repository points to doc 12 and prompts 01-03', emptyYes.status === 0 && newProjectSteps(emptyYes.stdout) && !/Fill in \d+ TODO\(adopt\) item\(s\) in CLAUDE\.md \(about/.test(emptyYes.stdout), emptyYes.stdout + emptyYes.stderr);
+  check('next steps: prompts are linked, not copied', !existsSync(join(emptyRepo, 'templates')) && !listFiles(emptyRepo).some((f) => f.includes('prompts')));
+  const scaffolded = apply(newRepo('new-scaffolded', { ...nestPkg, 'pnpm-lock.yaml': '' }));
+  check('next steps: freshly scaffolded repository points to doc 12 and prompts 01-03', scaffolded.status === 0 && newProjectSteps(scaffolded.stdout), scaffolded.stdout + scaffolded.stderr);
+  const existingSteps = apply(gitRepo(newRepo('existing-steps', { ...nestPkg, 'CLAUDE.md': '# Orders service\n\nHandles orders.\n\n## Notes\n\n- TODO(adopt): add the runbook link.\n' })));
+  check('next steps: existing repository keeps the usual steps', existingSteps.status === 0 && !existingSteps.stdout.includes('12-new-project.md') && existingSteps.stdout.includes('Fill in 1 TODO(adopt) item(s) in CLAUDE.md'), existingSteps.stdout + existingSteps.stderr);
+
+  // 2n. a re-run fills commands that are still null from package.json; set ones are kept
+  const emptyProject = JSON.parse(readFileSync(join(emptyRepo, '.claude/project.json'), 'utf8'));
+  check('re-run: an empty repository starts with no commands', Object.values(emptyProject.commands).every((v) => v === null));
+  writeFileSync(join(emptyRepo, '.claude/project.json'), `${JSON.stringify({ ...emptyProject, commands: { ...emptyProject.commands, lint: 'make lint' } }, null, 2)}\n`);
+  compose(emptyRepo);
+  writeFileSync(join(emptyRepo, 'package.json'), pkg(nestDeps, nestScripts));
+  writeFileSync(join(emptyRepo, 'pnpm-lock.yaml'), '');
+  gitRepo(emptyRepo);
+  const refillDry = adopt(emptyRepo, '--dry-run');
+  check('re-run: --dry-run lists the commands filled from package.json', refillDry.status === 0 && refillDry.stdout.includes('Commands filled from package.json') && /build\s+pnpm build\s+← "build"/.test(refillDry.stdout) && !/lint\s+pnpm lint/.test(refillDry.stdout), refillDry.stdout + refillDry.stderr);
+  const refillYes = adopt(emptyRepo, '--yes');
+  const refilled = JSON.parse(readFileSync(join(emptyRepo, '.claude/project.json'), 'utf8')).commands;
+  check('re-run: --yes stores the filled commands and keeps set ones', refillYes.status === 0 && refilled.build === 'pnpm build' && refilled['unit-test'] === 'pnpm test' && refilled.install === 'pnpm install --frozen-lockfile' && refilled.lint === 'make lint', refillYes.stdout + refillYes.stderr + JSON.stringify(refilled));
+  check('re-run: the CLAUDE.md commands block and settings follow', readFileSync(join(emptyRepo, 'CLAUDE.md'), 'utf8').includes('`<build-cmd>`: `pnpm build`') && compose(emptyRepo, '--check').status === 0);
+  check('re-run: still a new project, so the next steps point to doc 12', newProjectSteps(refillYes.stdout), refillYes.stdout);
+  check('re-run: a second re-run has nothing to do', adopt(emptyRepo, '--dry-run').stdout.includes('Nothing to do'));
+
   // 2k. the real standard (not a fixture) adopts and syncs when its CODEOWNERS names a real owner
   const liveBlock = blockOf(readFileSync(join(T, '.github/CODEOWNERS'), 'utf8'));
   if (PLACEHOLDER_RE.test(liveBlock)) {
     skip('real standard: adopt and sync succeed with a real CODEOWNERS owner', 'templates/.github/CODEOWNERS still has placeholder owners');
   } else {
     const live = newRepo('live-standard');
-    run('node', [join(ROOT, 'scripts/adopt.mjs'), '--stack', 'nestjs-mysql', ...OWNER, '--dry-run'], { cwd: live });
-    const liveAdopt = run('node', [join(ROOT, 'scripts/adopt.mjs'), '--stack', 'nestjs-mysql', ...OWNER, '--yes'], { cwd: live });
-    const liveSync = run('node', [join(ROOT, 'scripts/sync-standard.mjs'), '--target', live]);
+    // This checkout is a release only when HEAD carries its tag; while a change is developed it is not.
+    const liveFlags = standardRelease(ROOT).problems.length ? ['--allow-unreleased'] : [];
+    run('node', [join(ROOT, 'scripts/adopt.mjs'), '--stack', 'nestjs-mysql', ...OWNER, ...liveFlags, '--dry-run'], { cwd: live });
+    const liveAdopt = run('node', [join(ROOT, 'scripts/adopt.mjs'), '--stack', 'nestjs-mysql', ...OWNER, ...liveFlags, '--yes'], { cwd: live });
+    const liveSync = run('node', [join(ROOT, 'scripts/sync-standard.mjs'), '--target', live, ...liveFlags]);
     const liveCo = readFileSync(join(live, '.github/CODEOWNERS'), 'utf8');
     check('real standard: adopt and sync succeed with a real CODEOWNERS owner', liveAdopt.status === 0 && liveSync.status === 0 && blockOf(liveCo) === codeownersBlock(OWNER[1]), liveAdopt.stderr + liveSync.stderr);
   }

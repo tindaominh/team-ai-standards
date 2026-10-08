@@ -1,6 +1,6 @@
 # 00. Quickstart
 
-One page for developers. You do not need to read the other documents to start; they explain the reasons.
+One page for developers. You do not need to read the other documents to start; they explain the reasons. Starting a new project from scratch? Follow [12, Starting a new project](12-new-project.md).
 
 ## Adopt the standard in a repository (about 30 minutes)
 
@@ -15,8 +15,8 @@ One page for developers. You do not need to read the other documents to start; t
     - `--profile`: `strict` for client repositories (default), `standard` only for internal repositories. Unsure? Use `strict`.
     - Add `--with-docs` to also install the documentation checks (doc 09).
     - Every option, its default and where it is stored: [README, Adoption options](../../README.md#adoption-options). Your choices are stored in `.claude/project.json`; a later run reuses them unless you pass a flag.
-    - Nothing is written. The output lists every file to create, a diff of every file to change, the permission rules carried over from your settings or dropped (with the reason), and a plan hash.
-    - **Decisions required** lists what only a person can decide, with the flag to pass: `--repo-owner @org/team` when the repository has no `CODEOWNERS`, `--carry-allow "<rule>"` or `--drop-allow "<rule>"` (or `--drop-allow-rest`) for each `allow` rule in your settings that the profile does not grant, a stack flag when detection is ambiguous. Add the flag and run `--dry-run` again.
+    - Nothing is written. **Decisions required** lists what only a person can decide, with the flag to pass. Add the flags and run `--dry-run` again until none remain. How to read each part of the output, the loop and a worked example with per-rule `allow` decisions: [README, Running adoption](../../README.md#running-adoption).
+    - The checkout of the standard must be on a release tag with a clean working tree (`git -C ../team-ai-standards describe --tags`, `git -C ../team-ai-standards status`); otherwise the dry run warns and `--yes` refuses.
 2. **Apply exactly that plan** on a new branch with a clean working tree, with the same flags and `--yes` instead of `--dry-run`:
 
     ```bash
@@ -27,7 +27,7 @@ One page for developers. You do not need to read the other documents to start; t
     - If anything changed since the dry run (a file, a flag, the standard version), it stops and asks for a new `--dry-run`. It also stops, with the git commands to run, when the working tree is not clean or you are on the default branch.
     - Your content is kept. `CLAUDE.md` gets two blocks after its introduction, between `<!-- std:begin standard -->` / `<!-- std:end standard -->` and the same for `commands`; the PR template and `CODEOWNERS` get a block at the end; `.claude/settings.json` is regenerated, with your stricter rules moved into `.claude/project.json`. Headings that may repeat a block (for example your own "Commands") are listed as optional cleanup and never removed.
     - To undo before committing: `git restore .` and `git clean -fd` (check first with `git clean -nd`).
-3. **Fill in the project details.** In a new `CLAUDE.md`, complete the `TODO(adopt)` items. Set any command shown as `not set` in `.claude/project.json`, then run `node .claude/std/compose-settings.mjs`.
+3. **Fill in the project details.** In a new `CLAUDE.md`, complete the `TODO(adopt)` items (prompt 01 in [12](12-new-project.md) lets Claude Code interview you). Set any command shown as `not set` in `.claude/project.json`, then run `node .claude/std/compose-settings.mjs`.
 4. **Check and open a PR.** Run `node .claude/std/compose-settings.mjs --check`, open a pull request, and ask the owner of the standard to register the repository for updates.
 
 ## Daily workflow

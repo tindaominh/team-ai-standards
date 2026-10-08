@@ -4,6 +4,43 @@ All notable changes to this standard are recorded here. Versions follow `MAJOR.M
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-08
+
+Documentation for running adoption correctly and for starting a new project from scratch, plus a check that adoption runs from a released standard. Released as a minor version under doc 10 section 1. The new doc, the prompts and the optional flag are MINOR-level additions. The new check only blocks `--yes` when the standard checkout itself is not a release, and the command fill on a re-run only adds values that were `null`. Adopted repositories need to do nothing, so nothing is marked **Breaking**.
+
+### Added
+
+- `adopt.mjs` checks the standard checkout it runs from before planning. It must have a clean working tree (untracked files count), HEAD must be on the tag `v<version>` of `package.json`, and `package.json` must match `templates/.claude/STANDARD_VERSION`. `--dry-run` prints `Standard checkout: <tag> (<path>)` and, when the checkout is not a release, a warning with the git commands that fix it. `--yes` refuses before writing anything.
+- `--allow-unreleased` (run option, never stored): for maintainers testing unreleased changes. It lifts the refusal and is printed as `UNRELEASED STANDARD (--allow-unreleased)` in `--dry-run` and `--yes`. It is part of the flags, so the plan hash covers it. It is listed in `--help` and in the README tables.
+- `sync-standard.mjs` run by hand applies the same check (`--allow-unreleased` to override, and the summary records it). It skips the check in GitHub Actions, where `standard-update.yml` already checks the tag against the version.
+- `docs/en/12-new-project.md` and `docs/vi/12-new-project.md`:
+  - what the standard provides vs what people must provide, why a new project's context comes almost entirely from people (prompts 01 and 02 make it an interview, and existing documents may be given to Claude under doc 01), and the three layers of context (stable `CLAUDE.md`, detailed spec, per-task prompt) that must be kept current;
+  - two paths with exact commands: scaffold with the NestJS CLI and pnpm first (recommended), or start from an empty repository with explicit stack flags;
+  - what adopt checks;
+  - what to do after adoption;
+  - the daily loop;
+  - a GitHub template-repository tip.
+- `templates/prompts/01-fill-claude-md.md` to `05-empty-repo-scaffold.md`: English prompts, used as-is, for filling `CLAUDE.md` by interview, writing `docs/PROJECT_SPEC.md`, the kickoff plan, a feature ticket, and scaffolding an empty repository. Doc 12 shows them between `AUTO-GENERATED:prompt-0N` markers, filled by `npm run docs:readme`; `npm run check:readme` fails when they are stale. They are not copied into project repositories.
+- README "Running adoption" / "Chạy adopt", hand-written, before the generated options table. It covers:
+  - prerequisites for both checkouts;
+  - how to read each part of the dry run;
+  - the dry-run → flags → dry-run → `--yes` loop with exactly the same flags (optionally `--plan <hash>`);
+  - a worked example with per-rule `allow` decisions;
+  - undo with git.
+
+  Docs 00 and 10 link to it instead of repeating it. Doc 12 is linked from the README and doc 00.
+- Smoke tests for:
+  - the release check (dirty checkout, HEAD not on a tag, tag/version mismatch, the override, sync by hand and in Actions);
+  - the next steps for an empty, a freshly scaffolded and an existing repository;
+  - the command fill on a re-run;
+  - doc 12 prompts matching their files, and a stale prompt block failing the check.
+
+### Changed
+
+- After `--yes`, a repository whose `CLAUDE.md` has no project content yet (outside the `std:` blocks it is still the skeleton) gets new-project next steps: doc 12, then prompts 01, 02 and 03, as paths in the standard checkout. Repositories with their own `CLAUDE.md` keep the previous steps.
+- A later `adopt.mjs` run fills commands that are still `null` in `.claude/project.json` from `package.json` scripts and lists them under "Commands filled from package.json". Commands already set are never replaced. Path b of doc 12 relies on this after scaffolding.
+- The always-loaded context is unchanged: 1,777 words, and 2,286 for the largest combination.
+
 ## [0.6.0] - 2026-10-07
 
 Fixes from the first real automatic adoption (0.5.0 pilot), before the pilot applies it. Released as a minor version under doc 10 section 1: the profiles gain ask rules (stricter) and `--carry-allow` / `--drop-allow` change form (marked **Breaking**).

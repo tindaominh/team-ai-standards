@@ -115,7 +115,7 @@ Workflow dùng App khi `STANDARD_APP_CLIENT_ID` được đặt, ngược lại 
 
 ## 6. Áp dụng bộ tiêu chuẩn lần đầu
 
-Chạy script adoption từ project repository (xem 00-quickstart):
+Chạy script adoption từ project repository (xem 00-quickstart). Cách đọc dry run, vòng lặp quyết định và một ví dụ: README, [Chạy adopt](../../README.md#chạy-adopt). Dự án mới: [12](12-new-project.md).
 
 ```bash
 node <path-to-standard>/scripts/adopt.mjs --profile <strict|standard> --dry-run
@@ -144,6 +144,7 @@ Xem trước, rồi áp dụng:
 - `--yes` tính lại plan. Nếu hash khác với plan đã xem (một file bị sửa giữa chừng, flag khác, version bộ tiêu chuẩn mới), script dừng và yêu cầu chạy lại `--dry-run`. `--plan <hash>` yêu cầu đúng một plan cụ thể thay cho plan đã lưu.
 - Trước khi sửa bất kỳ file nào đã có, `--yes` yêu cầu một git repository có working tree sạch, đang ở branch khác default branch; nếu không, script dừng và in đúng các lệnh git cần chạy. Việc tạo file mới không có điều kiện này.
 - Chạy lại `--yes`, hoặc `--dry-run` sau đó, sẽ báo "Nothing to do".
+- Lần chạy sau điền các lệnh còn `null` trong `.claude/project.json` từ script trong `package.json` (ví dụ sau khi scaffold một repo rỗng, tài liệu 12) và liệt kê chúng trong "Commands filled from package.json". Lệnh đã đặt không bao giờ bị thay.
 - Các lựa chọn cấu hình (stack, profile, `--repo-owner`, `--with-docs`) được lưu trong `.claude/project.json`. Ở lần chạy sau, mỗi giá trị lấy từ flag, rồi `project.json`, rồi kết quả detect, rồi giá trị mặc định, và `--dry-run` in ra nguồn của từng giá trị. Lần chạy sau có flag chỉ đổi đúng giá trị đó: `project.json` giữ các key khác, settings và các khối `std:` được sinh lại, các file standard mà lựa chọn mới không cần nữa bị xoá. Repo phải đang dùng cùng version của bộ tiêu chuẩn (cập nhật trước). PR cập nhật đọc cùng các giá trị này, kể cả `repoOwner` cho khối `CODEOWNERS`. Mọi tuỳ chọn: README, mục "Tuỳ chọn của adopt.mjs" (sinh từ `scripts/lib/adopt-options.mjs`; `adopt.mjs --help` in ra cùng danh sách).
 
 Những gì được làm tự động:
@@ -163,6 +164,7 @@ Những gì dừng lại chờ quyết định (liệt kê trong "Decisions requ
 Ngoài ra:
 
 - Script từ chối chạy khi khối `CODEOWNERS` của chính bộ tiêu chuẩn vẫn còn owner placeholder.
+- Checkout của bộ tiêu chuẩn đang chạy script phải là một bản release: working tree sạch, HEAD ở tag `v<version>` theo `package.json`, và `package.json` khớp `templates/.claude/STANDARD_VERSION`. `--dry-run` in `Standard checkout: <tag>` và, khi không phải bản release, một cảnh báo kèm các lệnh git để sửa; `--yes` từ chối. `--allow-unreleased` (maintainer thử thay đổi chưa release) bỏ qua việc từ chối và được in ra ở cả hai output. `sync-standard.mjs` khi chạy tay áp dụng cùng kiểm tra, và summary ghi lại việc bỏ qua; trong GitHub Actions, job cập nhật kiểm tra tag với version thay cho việc này.
 - Script không bao giờ commit, push, cài package hay dùng mạng.
 - Để hoàn tác trước khi commit: `git restore .` và `git clean -fd` (kiểm tra trước bằng `git clean -nd`).
 - Sau đó owner of the standard thêm repository vào `standard-targets.json`.

@@ -3,7 +3,12 @@
 // standard. Used by .github/workflows/standard-update.yml; can also be run by
 // hand. It never commits or pushes.
 //
-//   node scripts/sync-standard.mjs --target <dir> [--summary <file>]
+//   node scripts/sync-standard.mjs --target <dir> [--summary <file>] [--allow-unreleased]
+//
+// Run by hand, it refuses a standard checkout that is not a clean release (HEAD on
+// tag v<version>), unless --allow-unreleased is passed; the summary then says so.
+// In GitHub Actions the check is skipped: standard-update.yml already checks that
+// the tag matches the version.
 //
 // Writes ONLY Layer 1 (STANDARD) files:
 //   .claude/rules/std/**, .claude/agents/std-*, .claude/skills/std-*/**, .claude/std/**,
@@ -18,10 +23,11 @@
 // selected are removed (they are Layer 1 files listed in the manifest).
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { standardRelease } from './lib/git.mjs';
 import {
   CODEOWNERS_KEY, CODEOWNERS_LOCATIONS, MANAGED_MARKER, OPTIONAL, PR_BLOCK_RE, PR_KEY, codeownersPlaceholders,
-  codeownersBlock, coreFiles, findBlock, hash, normalize, optionalFiles, prBlock, prTemplate, summary, unsupportedIn,
+  ROOT, codeownersBlock, coreFiles, findBlock, hash, normalize, optionalFiles, prBlock, prTemplate, summary, unsupportedIn,
   validate, version
 } from './lib/standard.mjs';
 import { BLOCK_NAMES, hasBlock } from '../templates/.claude/std/compose.mjs';
@@ -33,7 +39,7 @@ const arg = (name) => {
 const target = arg('target');
 const summaryFile = arg('summary');
 if (!target) {
-  console.error('usage: sync-standard.mjs --target <dir> [--summary <file>]');
+  console.error('usage: sync-standard.mjs --target <dir> [--summary <file>] [--allow-unreleased]');
   process.exit(2);
 }
 const exists = (p) => existsSync(join(target, p));
@@ -51,6 +57,13 @@ const placeholders = codeownersPlaceholders();
 if (placeholders.length) {
   console.error(`sync: templates/.github/CODEOWNERS still has placeholder owners (${placeholders.join(', ')}). Set the real team before updating repositories.`);
   process.exit(2);
+}
+const release = process.env.GITHUB_ACTIONS === 'true' ? { problems: [] } : standardRelease(resolve(ROOT));
+if (release.problems.length && !process.argv.includes('--allow-unreleased')) {
+  console.error(`sync: the standard checkout at ${resolve(ROOT)} is not a released version (${release.state}); nothing was written.`);
+  for (const p of release.problems) console.error(`  - ${p.what}. Fix:\n${p.fix.map((c) => `      ${c}`).join('\n')}`);
+  console.error('Maintainers testing unreleased changes: --allow-unreleased.');
+  process.exit(3);
 }
 const project = JSON.parse(read('.claude/project.json'));
 let selection;
@@ -190,6 +203,7 @@ const list = (items) => (items.length ? items.map((i) => `- ${i.startsWith('`') 
 const out = [
   `## Team AI standard ${previous} → ${version()}`,
   '',
+  ...(release.problems.length ? [`> **Unreleased standard checkout** (\`--allow-unreleased\`, ${release.state}): ${release.problems.map((p) => p.what).join('; ')}. Do not merge as a release update.`, ''] : []),
   `Stack **${summary(selection)}**, profile **${project.profile}** (from \`.claude/project.json\`). Read the standard's CHANGELOG for this release before merging.`,
   '',
   'Only standard files (Layer 1) and the inside of the std blocks in `CLAUDE.md` are changed. The rest of `CLAUDE.md`, `.claude/project.json`, `.claude/rules/local/` and personal settings are not touched.',

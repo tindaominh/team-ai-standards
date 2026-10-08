@@ -17,6 +17,8 @@
 //   the repository's own stricter rules moved into .claude/project.json.
 // - Permissions are never loosened automatically.
 // - Existing files are modified only on a clean git working tree, off the default branch.
+// - --yes runs only from a released standard checkout (clean, HEAD on tag v<version>),
+//   unless --allow-unreleased is passed, which is printed in the output.
 // - Decisions that need a human stop --yes. *.proposed files exist only for the
 //   --propose-unresolved fallback. No commits, pushes, installs or network.
 import { spawnSync } from 'node:child_process';
@@ -26,10 +28,10 @@ import { dirname, join, resolve } from 'node:path';
 import { helpText, parseArgs } from './lib/adopt-options.mjs';
 import { buildPlan } from './lib/adopt-plan.mjs';
 import { unifiedDiff } from './lib/diff.mjs';
-import { gitProblems } from './lib/git.mjs';
+import { gitProblems, standardRelease } from './lib/git.mjs';
 import {
-  COMMAND_CANDIDATES, DIMENSIONS, FLAG_FOR, codeownersPlaceholders, describe, detect, expandAlias, hash, normalize,
-  registry, summary, validate, version
+  COMMAND_CANDIDATES, DIMENSIONS, FLAG_FOR, ROOT, codeownersPlaceholders, describe, detect, expandAlias, hash,
+  isUnfilledClaude, normalize, registry, summary, validate, version
 } from './lib/standard.mjs';
 
 const argv = process.argv.slice(2);
@@ -56,6 +58,15 @@ if (placeholders.length) {
 }
 const exists = (p) => existsSync(join(TARGET, p));
 const read = (p) => readFileSync(join(TARGET, p), 'utf8');
+
+// --- the standard checkout this runs from must be a clean release ----------------------------
+const STD_ROOT = resolve(ROOT);
+const release = standardRelease(STD_ROOT);
+const UNRELEASED = Boolean(opts['allow-unreleased']);
+const releaseFixes = () => release.problems.map((p) => `  - ${p.what}. Fix:\n${p.fix.map((c) => `      ${c}`).join('\n')}`).join('\n');
+if (YES && release.problems.length && !UNRELEASED) {
+  die(3, `the standard checkout at ${STD_ROOT} is not a released version (${release.state}); nothing was written.\n${releaseFixes()}\nThen run --dry-run again. Maintainers testing unreleased changes: --allow-unreleased (on both --dry-run and --yes).`);
+}
 
 // --- a previous adoption: its stored configuration is the starting point -------------------
 let previous = null;
@@ -141,20 +152,37 @@ if (!DRY && !YES) {
   process.exit(3);
 }
 
-// --- commands: stored ones, or found in package.json on first adoption ----------------------
-const matched = {};
-let commands = previous?.commands;
-if (!commands) {
+// --- commands: found in package.json on first adoption; on a later run the stored ones,
+// with only those still null filled from package.json (a set command is never replaced) --------
+function commandsFromPackage() {
   const pkg = exists('package.json') ? JSON.parse(read('package.json')) : null;
   const scripts = (pkg && pkg.scripts) || {};
   const manager = exists('pnpm-lock.yaml') ? 'pnpm' : exists('yarn.lock') ? 'yarn' : 'npm';
   const runScript = (name) => (manager === 'npm' ? (name === 'test' ? 'npm test' : `npm run ${name}`) : `${manager} ${name}`);
   const installCmd = { npm: exists('package-lock.json') ? 'npm ci' : 'npm install', pnpm: 'pnpm install --frozen-lockfile', yarn: 'yarn install --frozen-lockfile' }[manager];
-  commands = { install: pkg ? installCmd : null };
+  const found = { install: pkg ? installCmd : null };
+  const names = {};
   for (const [key, candidates] of Object.entries(COMMAND_CANDIDATES)) {
     const name = candidates.find((c) => c in scripts);
-    commands[key] = name ? runScript(name) : null;
-    if (name) matched[key] = name;
+    found[key] = name ? runScript(name) : null;
+    if (name) names[key] = name;
+  }
+  if (pkg) names.install = 'lockfile';
+  return { found, names };
+}
+const fromPackage = commandsFromPackage();
+const matched = {};
+let commands;
+if (!previous?.commands) {
+  commands = fromPackage.found;
+  for (const [key, name] of Object.entries(fromPackage.names)) if (key !== 'install') matched[key] = name;
+} else {
+  commands = { ...previous.commands };
+  for (const [key, value] of Object.entries(fromPackage.found)) {
+    if ((commands[key] === null || commands[key] === undefined) && value) {
+      commands[key] = value;
+      matched[key] = fromPackage.names[key];
+    }
   }
 }
 
@@ -175,6 +203,12 @@ const planHash = hash(JSON.stringify({
 
 // --- report -------------------------------------------------------------------------------
 console.log(`Team AI standard ${version()} — profile ${profile}${DRY ? ' — DRY RUN, nothing is written' : ''}`);
+console.log(`Standard checkout: ${release.state} (${STD_ROOT})`);
+if (release.problems.length && UNRELEASED) {
+  console.log(`UNRELEASED STANDARD (--allow-unreleased): this checkout is not a clean release; for maintainers testing changes only.\n${release.problems.map((p) => `  - ${p.what}`).join('\n')}`);
+} else if (release.problems.length) {
+  console.log(`warning: the standard checkout is not a released version; --yes will refuse.\n${releaseFixes()}`);
+}
 console.log(`Stack: ${describe(selection)} (${summary(selection)})`);
 console.log('Values (source: flag, project.json, detected or default):');
 const shown = (v) => (Array.isArray(v) ? (v.join(', ') || '(none)') : v === null ? '(none)' : String(v));
@@ -215,6 +249,9 @@ if (previous && (allowChoices.carry.length || allowChoices.drop.length || allowC
 if (!previous) {
   console.log('\nCommands found in package.json:');
   for (const [key, value] of Object.entries(commands)) console.log(`  ${key.padEnd(19)} ${value || 'TODO (not found)'}${matched[key] ? `  ← "${matched[key]}"` : ''}`);
+} else if (Object.keys(matched).length) {
+  console.log('\nCommands filled from package.json (they were not set in .claude/project.json; set commands are never replaced):');
+  for (const [key, name] of Object.entries(matched)) console.log(`  ${key.padEnd(19)} ${commands[key]}  ← ${name === 'lockfile' ? 'lockfile' : `"${name}"`}`);
 }
 if (suggestions.length) {
   console.log('\nOptional cleanup (never done automatically):');
@@ -266,11 +303,20 @@ const todos = (claudeNow.match(/TODO\(adopt\)/g) || []).length;
 const missing = Object.entries(commands).filter(([, v]) => !v).map(([k]) => k);
 const gitignore = exists('.gitignore') ? read('.gitignore') : '';
 const steps = [];
-if (todos) steps.push(`Fill in ${todos} TODO(adopt) item(s) in CLAUDE.md (about 20 minutes).`);
+if (claudeNow && isUnfilledClaude(claudeNow)) {
+  // New, empty or freshly scaffolded repository: CLAUDE.md has no project content yet.
+  // The guide and prompts stay in the standard checkout; they are linked, never copied.
+  const at = (p) => join(STD_ROOT, p);
+  steps.push(`New project: follow ${at('docs/en/12-new-project.md')} (Tiếng Việt: ${at('docs/vi/12-new-project.md')}).`);
+  steps.push(`Fill in the ${todos} TODO(adopt) item(s) in CLAUDE.md with Claude Code, using the prompt ${at('templates/prompts/01-fill-claude-md.md')}.`);
+  steps.push(`Optional: write docs/PROJECT_SPEC.md with ${at('templates/prompts/02-project-spec.md')}.`);
+  steps.push(`Plan the first milestone with ${at('templates/prompts/03-kickoff-plan.md')} before any code.`);
+} else if (todos) steps.push(`Fill in ${todos} TODO(adopt) item(s) in CLAUDE.md (about 20 minutes).`);
 if (missing.length && !previous) steps.push(`Set these commands in .claude/project.json, or leave them null if the repository has none: ${missing.join(', ')}. Then run: node .claude/std/compose-settings.mjs`);
 if (proposals.length) steps.push('Merge the proposed file(s): see .claude/std-adoption-checklist.md');
 if (!/settings\.local\.json/.test(gitignore)) steps.push('Add .claude/settings.local.json to .gitignore.');
 steps.push('Review with git diff; to undo everything: git restore . && git clean -fd (check first with git clean -nd).');
 steps.push(previous ? 'Commit and open a PR.' : 'Commit, open a PR, and ask the owner of the standard to add this repository to .github/standard-targets.json.');
+if (release.problems.length) console.log(`\nUNRELEASED STANDARD (--allow-unreleased): applied from ${release.state}, not a clean release.`);
 console.log(`\nApplied plan ${planHash}: ${writes.length} file(s) written. Next steps:`);
 steps.forEach((s, i) => console.log(`  ${i + 1}. ${s}`));

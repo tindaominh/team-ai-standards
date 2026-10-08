@@ -1,5 +1,7 @@
-// Git state checks for adopt.mjs. Read-only: never runs a git command that writes.
+// Git state checks for adopt.mjs and sync-standard.mjs. Read-only: never runs a git command that writes.
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const git = (dir, ...args) => {
   const r = spawnSync('git', args, { cwd: dir, encoding: 'utf8' });
@@ -32,4 +34,58 @@ export function gitProblems(dir) {
     problems.push({ what: `the current branch "${branch}" is the default branch`, fix: ['git switch -c chore/adopt-ai-standard'] });
   }
   return problems;
+}
+
+// The standard checkout that adopt.mjs and sync-standard.mjs run from must be a
+// released version: a git checkout with a clean working tree whose HEAD carries the
+// tag v<version>, and package.json matching templates/.claude/STANDARD_VERSION.
+// Returns { state, version, problems: [{ what, fix }] }; problems is empty when it is.
+export function standardRelease(root) {
+  const read = (p) => {
+    try {
+      return readFileSync(join(root, p), 'utf8');
+    } catch {
+      return null;
+    }
+  };
+  const pkgText = read('package.json');
+  const version = pkgText ? JSON.parse(pkgText).version : null;
+  const stdVersion = (read('templates/.claude/STANDARD_VERSION') || '').trim() || null;
+  const tag = `v${version || stdVersion}`;
+  const g = (...args) => ['git', '-C', root, ...args].join(' ');
+  if (git(root, 'rev-parse', '--is-inside-work-tree') !== 'true') {
+    return {
+      state: 'not a git checkout',
+      version,
+      problems: [{
+        what: `the standard at ${root} is not a git checkout, so its release cannot be verified`,
+        fix: [`git clone --branch ${tag} <standard-repository-url> team-ai-standards`, 'then run the script from that checkout']
+      }]
+    };
+  }
+  const problems = [];
+  const status = git(root, 'status', '--porcelain', '--untracked-files=all');
+  if (status) {
+    problems.push({
+      what: `the standard checkout has ${status.split('\n').length} changed or untracked file(s)`,
+      fix: [g('status'), `${g('stash', 'push', '-u')}   # or commit them on a branch of the standard`]
+    });
+  }
+  if (version !== stdVersion) {
+    problems.push({
+      what: `package.json (${version}) and templates/.claude/STANDARD_VERSION (${stdVersion}) disagree`,
+      fix: [g('fetch', '--tags'), `${g('switch', '--detach', '<latest release tag>')}   # see: ${g('tag', '--list', "'v*'", '--sort=-v:refname')}`]
+    });
+  }
+  const tags = (git(root, 'tag', '--points-at', 'HEAD') || '').split('\n').filter(Boolean);
+  if (!tags.includes(tag)) {
+    const latest = (git(root, 'tag', '--list', 'v*', '--sort=-v:refname') || '').split('\n').filter(Boolean)[0];
+    problems.push({
+      what: tags.length
+        ? `HEAD is tagged ${tags.join(', ')}, not ${tag} (the version in package.json)`
+        : `HEAD is not a release: no tag ${tag} on it`,
+      fix: [g('fetch', '--tags'), g('switch', '--detach', latest || '<latest release tag>')]
+    });
+  }
+  return { state: git(root, 'describe', '--tags', '--always', '--dirty') || 'unknown', version, problems };
 }

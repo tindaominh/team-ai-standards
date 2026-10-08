@@ -1,6 +1,6 @@
 # 00. Bắt đầu nhanh
 
-Một trang dành cho developer. Bạn không cần đọc các tài liệu khác để bắt đầu; chúng giải thích lý do đằng sau.
+Một trang dành cho developer. Bạn không cần đọc các tài liệu khác để bắt đầu; chúng giải thích lý do đằng sau. Bắt đầu một dự án mới từ đầu? Làm theo [12, Bắt đầu một dự án mới](12-new-project.md).
 
 ## Áp dụng bộ tiêu chuẩn vào một repository (khoảng 30 phút)
 
@@ -14,8 +14,8 @@ Một trang dành cho developer. Bạn không cần đọc các tài liệu khá
     - Lối tắt: `--stack nestjs-mysql`, `nestjs-postgres` hoặc `node-postgres` (không framework + PostgreSQL + TypeORM), tất cả đều kèm rule AWS.
     - `--profile`: `strict` cho repository của khách hàng (mặc định), `standard` chỉ cho repository nội bộ. Không chắc? Dùng `strict`.
     - Mọi tuỳ chọn, giá trị mặc định và nơi được lưu: [README, Tuỳ chọn của adopt.mjs](../../README.md#tuỳ-chọn-của-adoptmjs). Các lựa chọn của bạn được lưu trong `.claude/project.json`; lần chạy sau dùng lại chúng trừ khi bạn truyền flag.
-    - Script không ghi gì. Kết quả liệt kê mọi file sẽ tạo, diff của mọi file sẽ sửa, các permission rule được chuyển từ settings của bạn sang hoặc bị bỏ (kèm lý do), và một plan hash.
-    - Mục **Decisions required** liệt kê những gì chỉ con người quyết định được, kèm flag cần truyền: `--repo-owner @org/team` khi repo chưa có `CODEOWNERS`, `--carry-allow "<rule>"` hoặc `--drop-allow "<rule>"` (hoặc `--drop-allow-rest`) cho từng rule `allow` trong settings của bạn mà profile không cấp, flag stack khi detect không rõ ràng. Thêm flag rồi chạy lại `--dry-run`.
+    - Script không ghi gì. Mục **Decisions required** liệt kê những gì chỉ con người quyết định được, kèm flag cần truyền. Thêm flag rồi chạy lại `--dry-run` cho đến khi không còn mục nào. Cách đọc từng phần của output, vòng lặp và ví dụ quyết định từng rule `allow`: [README, Chạy adopt](../../README.md#chạy-adopt).
+    - Checkout của bộ tiêu chuẩn phải ở một tag release và working tree sạch (`git -C ../team-ai-standards describe --tags`, `git -C ../team-ai-standards status`); nếu không, dry run cảnh báo và `--yes` từ chối.
 2. **Áp dụng đúng plan đó** trên một branch mới với working tree sạch, cùng các flag, dùng `--yes` thay cho `--dry-run`:
 
     ```bash
@@ -26,7 +26,7 @@ Một trang dành cho developer. Bạn không cần đọc các tài liệu khá
     - Nếu có gì thay đổi kể từ lần dry run (một file, một flag, version của bộ tiêu chuẩn), script dừng và yêu cầu chạy lại `--dry-run`. Script cũng dừng, kèm các lệnh git cần chạy, khi working tree chưa sạch hoặc bạn đang ở default branch.
     - Nội dung của bạn được giữ nguyên. `CLAUDE.md` có thêm hai khối sau phần giới thiệu, giữa `<!-- std:begin standard -->` / `<!-- std:end standard -->` và tương tự cho `commands`; PR template và `CODEOWNERS` có thêm một khối ở cuối; `.claude/settings.json` được sinh lại, các rule chặt hơn của bạn được chuyển vào `.claude/project.json`. Những heading có thể trùng với một khối (ví dụ mục "Commands" của bạn) được liệt kê là gợi ý dọn dẹp, không bao giờ bị xoá tự động.
     - Để hoàn tác trước khi commit: `git restore .` và `git clean -fd` (kiểm tra trước bằng `git clean -nd`).
-3. **Điền thông tin dự án.** Với `CLAUDE.md` mới, hoàn thành các mục `TODO(adopt)`. Đặt những lệnh hiển thị `not set` trong `.claude/project.json`, rồi chạy `node .claude/std/compose-settings.mjs`.
+3. **Điền thông tin dự án.** Với `CLAUDE.md` mới, hoàn thành các mục `TODO(adopt)` (prompt 01 trong [12](12-new-project.md) để Claude Code phỏng vấn bạn). Đặt những lệnh hiển thị `not set` trong `.claude/project.json`, rồi chạy `node .claude/std/compose-settings.mjs`.
 4. **Kiểm tra rồi mở PR.** Chạy `node .claude/std/compose-settings.mjs --check`, mở pull request, và nhờ owner of the standard đăng ký repository để nhận các bản cập nhật.
 
 ## Quy trình hằng ngày

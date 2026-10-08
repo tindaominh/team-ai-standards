@@ -6,7 +6,7 @@
 
 ## English
 
-**Start here: [Quickstart](docs/en/00-quickstart.md)** — adopt the standard in a repository with one command and about 30 minutes of project details.
+**Start here: [Quickstart](docs/en/00-quickstart.md)** — adopt the standard in a repository with one command and about 30 minutes of project details. **New project:** [Starting a new project](docs/en/12-new-project.md).
 
 ### Purpose
 
@@ -27,6 +27,38 @@ node ../team-ai-standards/scripts/adopt.mjs --profile strict --yes
 ```
 
 The script detects the stack from `package.json` (framework, databases, data access, AWS) and shows it; correct it with `--framework`, `--db`, `--data-access`, `--with` (or a shortcut such as `--stack nestjs-mysql`). Profiles: `strict` (client repositories, default) or `standard` (internal only). `--dry-run` writes nothing and prints every change, with diffs and a plan hash; `--yes` applies exactly that plan, on a clean branch. Existing files are merged, not overwritten: `CLAUDE.md` gets `std:` blocks, the PR template and `CODEOWNERS` get a block at the end, and stricter rules from an existing `settings.json` move into `.claude/project.json`. Anything that needs a person (for example `--repo-owner`) is listed under "Decisions required" (details in the quickstart).
+
+### Running adoption
+
+1. **Prerequisites.**
+    - The checkout of this standard (where `adopt.mjs` runs from) is on a release tag with a clean working tree: `git -C ../team-ai-standards describe --tags` prints `vX.Y.Z` and `git -C ../team-ai-standards status` shows nothing. Otherwise `--dry-run` warns and `--yes` refuses, with the commands to fix it (`--allow-unreleased` is only for maintainers testing unreleased changes).
+    - The project repository has a clean working tree and is on a branch other than the default branch (`git status`, `git switch -c chore/adopt-ai-standard`).
+2. **Read the `--dry-run` output**, part by part:
+    - **Standard checkout:** the release it runs from, and a warning when it is not a clean release.
+    - **Values:** each configuration value and its source (flag, `project.json`, detected, default).
+    - **Plan:** every file to create, modify or delete.
+    - **Diffs:** `.claude/project.json`, `.claude/settings.json`, `CLAUDE.md` and the other modified files, as unified diffs.
+    - **Permission rules:** each existing `allow` rule is covered (the profile grants it), unsafe (dropped, never carried), carried, dropped, or needs decision.
+    - **Optional cleanup:** duplicates you may remove by hand; never done automatically.
+    - **Decisions required:** what `--yes` refuses until you add a flag.
+    - **Plan hash:** identifies exactly this plan.
+3. **The loop.** Run `--dry-run`, resolve each "Decisions required" item by adding a flag (`--carry-allow "<rule>"` or `--drop-allow "<rule>"` per rule, `--drop-allow-rest`, `--repo-owner @org/team`, a stack flag), and run `--dry-run` again until no decisions remain. Then run `--yes` with **exactly the same flags**; add `--plan <hash>` to require the plan you reviewed.
+4. **Example: an existing repository** whose `.claude/settings.json` allows `Bash(make test *)`, `Bash(make lint *)`, `Bash(make seed *)` and `Bash(docker compose up *)`:
+
+    ```bash
+    git switch -c chore/adopt-ai-standard
+    node ../team-ai-standards/scripts/adopt.mjs --profile strict --dry-run
+    # Existing allow rules: make test, make lint, make seed need a decision; docker compose up is unsafe
+    # (the profile asks Bash(docker *)), so it is dropped. Decisions required: the three make rules, --repo-owner
+    node ../team-ai-standards/scripts/adopt.mjs --profile strict --repo-owner @acme/orders-team \
+      --carry-allow "Bash(make test *)" --carry-allow "Bash(make lint *)" --drop-allow-rest --dry-run
+    # make seed is dropped by --drop-allow-rest (same as --drop-allow "Bash(make seed *)").
+    # No decisions left; note the plan hash, for example 3f9c0a1b2c3d4e5f
+    node ../team-ai-standards/scripts/adopt.mjs --profile strict --repo-owner @acme/orders-team \
+      --carry-allow "Bash(make test *)" --carry-allow "Bash(make lint *)" --drop-allow-rest --yes --plan 3f9c0a1b2c3d4e5f
+    ```
+
+5. **Undo.** Everything happens on the branch: review with `git diff` and `git status`; to undo before committing, `git restore .` and `git clean -fd` (check first with `git clean -nd`); after committing, delete the branch.
 
 ### Adoption options
 
@@ -52,6 +84,7 @@ Adoption is two commands with the same options. `--dry-run` writes nothing: it s
 | `--dry-run` | — | off | not stored | Show the plan, the value sources and the plan hash; write nothing. |
 | `--yes` | — | off | not stored | Apply the plan reviewed with `--dry-run`; stop if it changed. |
 | `--plan` | `<hash>` | the plan recorded by `--dry-run` | not stored | With `--yes`: require this plan hash. |
+| `--allow-unreleased` | — | off: `--yes` refuses a standard checkout that is dirty or not on its release tag | not stored (printed in the output) | For maintainers testing unreleased changes of the standard: run from a checkout that is not a clean release. Printed prominently in `--dry-run` and `--yes`. |
 | `--target` | `<dir>` | current directory | not stored | Repository to adopt. |
 | `--help` | — | off | not stored | Print this list and exit. |
 
@@ -98,11 +131,13 @@ Details: `docs/en/10-versioning-and-distribution.md`.
 | `docs/en/09-docs-automation.md` | Keeping documentation current |
 | `docs/en/10-versioning-and-distribution.md` | Versions, the three layers, adoption flags, update PRs |
 | `docs/en/11-adding-a-stack-fragment.md` | How to add a framework, database or data-access fragment |
+| `docs/en/12-new-project.md` | Starting a new project: scaffold or empty repository, adoption, prompts for Claude Code |
+| `templates/prompts/` | Prompts for new projects (fill `CLAUDE.md`, specification, kickoff plan, feature ticket, scaffold), used as-is |
 | `docs/vi/` | The same documents in Vietnamese, plus `ai-files-explained.md` |
 | `templates/` | Layer 1 files exactly as a project repository receives them, the `CLAUDE.md` skeleton, and `fragments/` (composable stack fragments and their registry) |
 | `scripts/adopt.mjs` | Adoption script, run from a project repository |
 | `scripts/sync-standard.mjs` | Writes Layer 1 files for an update PR |
-| `scripts/` (other) | Checks for this repository: parity, budget per stack, JSON, settings generator, README option tables, audit exceptions, smoke tests |
+| `scripts/` (other) | Checks for this repository: parity, budget per stack, JSON, settings generator, README option tables and doc 12 prompts, audit exceptions, smoke tests |
 | `.github/workflows/` | CI for this repository and the release update job |
 | `audit-exceptions.json` | Accepted npm audit advisories for this repository's dev tools |
 | `CHANGELOG.md` | Release history |
@@ -115,7 +150,7 @@ Details: `docs/en/10-versioning-and-distribution.md`.
 
 ## Tiếng Việt
 
-**Bắt đầu tại đây: [Bắt đầu nhanh](docs/vi/00-quickstart.md)** — áp dụng bộ tiêu chuẩn vào một repo bằng một lệnh và khoảng 30 phút điền thông tin dự án.
+**Bắt đầu tại đây: [Bắt đầu nhanh](docs/vi/00-quickstart.md)** — áp dụng bộ tiêu chuẩn vào một repo bằng một lệnh và khoảng 30 phút điền thông tin dự án. **Dự án mới:** [Bắt đầu một dự án mới](docs/vi/12-new-project.md).
 
 ### Mục đích
 
@@ -136,6 +171,38 @@ node ../team-ai-standards/scripts/adopt.mjs --profile strict --yes
 ```
 
 Script tự nhận diện stack từ `package.json` (framework, database, data access, AWS) và in ra; sửa lại bằng `--framework`, `--db`, `--data-access`, `--with` (hoặc lối tắt như `--stack nestjs-mysql`). Profile: `strict` (repo khách hàng, mặc định) hoặc `standard` (chỉ repo nội bộ). `--dry-run` không ghi gì và in ra mọi thay đổi, kèm diff và plan hash; `--yes` áp dụng đúng plan đó, trên một branch sạch. File đã có được gộp chứ không bị ghi đè: `CLAUDE.md` có thêm các khối `std:`, PR template và `CODEOWNERS` có thêm một khối ở cuối, các rule chặt hơn trong `settings.json` đang có được chuyển vào `.claude/project.json`. Những gì cần con người quyết định (ví dụ `--repo-owner`) được liệt kê trong "Decisions required" (chi tiết trong quickstart).
+
+### Chạy adopt
+
+1. **Điều kiện trước.**
+    - Checkout của standard này (nơi chạy `adopt.mjs`) ở một tag release và working tree sạch: `git -C ../team-ai-standards describe --tags` in ra `vX.Y.Z` và `git -C ../team-ai-standards status` không có gì. Nếu không, `--dry-run` cảnh báo và `--yes` từ chối, kèm lệnh để sửa (`--allow-unreleased` chỉ dành cho maintainer thử thay đổi chưa release).
+    - Repo dự án có working tree sạch và đang ở một branch khác default branch (`git status`, `git switch -c chore/adopt-ai-standard`).
+2. **Đọc output của `--dry-run`**, từng phần:
+    - **Standard checkout:** bản release đang chạy, và cảnh báo nếu không phải bản release sạch.
+    - **Values:** từng giá trị cấu hình và nguồn của nó (flag, `project.json`, detect, mặc định).
+    - **Plan:** mọi file sẽ tạo, sửa hoặc xoá.
+    - **Diff:** `.claude/project.json`, `.claude/settings.json`, `CLAUDE.md` và các file bị sửa khác, dạng unified diff.
+    - **Permission rules:** mỗi rule `allow` đang có là covered (profile đã cấp), unsafe (bị bỏ, không bao giờ được giữ), carried, dropped, hoặc needs decision.
+    - **Optional cleanup:** phần trùng lặp bạn có thể tự xoá; không bao giờ làm tự động.
+    - **Decisions required:** những gì `--yes` từ chối cho đến khi bạn thêm flag.
+    - **Plan hash:** định danh đúng plan này.
+3. **Vòng lặp.** Chạy `--dry-run`, giải quyết từng mục "Decisions required" bằng cách thêm flag (`--carry-allow "<rule>"` hoặc `--drop-allow "<rule>"` cho từng rule, `--drop-allow-rest`, `--repo-owner @org/team`, flag về stack), rồi chạy lại `--dry-run` cho đến khi không còn quyết định nào. Sau đó chạy `--yes` với **đúng các flag đó**; thêm `--plan <hash>` để bắt buộc đúng plan đã xem.
+4. **Ví dụ: repo đã có sẵn** với `.claude/settings.json` cho phép `Bash(make test *)`, `Bash(make lint *)`, `Bash(make seed *)` và `Bash(docker compose up *)`:
+
+    ```bash
+    git switch -c chore/adopt-ai-standard
+    node ../team-ai-standards/scripts/adopt.mjs --profile strict --dry-run
+    # Existing allow rules: make test, make lint, make seed cần quyết định; docker compose up là unsafe
+    # (profile ask Bash(docker *)) nên bị bỏ. Decisions required: ba rule make, --repo-owner
+    node ../team-ai-standards/scripts/adopt.mjs --profile strict --repo-owner @acme/orders-team \
+      --carry-allow "Bash(make test *)" --carry-allow "Bash(make lint *)" --drop-allow-rest --dry-run
+    # make seed bị bỏ bởi --drop-allow-rest (giống --drop-allow "Bash(make seed *)").
+    # Không còn quyết định nào; ghi lại plan hash, ví dụ 3f9c0a1b2c3d4e5f
+    node ../team-ai-standards/scripts/adopt.mjs --profile strict --repo-owner @acme/orders-team \
+      --carry-allow "Bash(make test *)" --carry-allow "Bash(make lint *)" --drop-allow-rest --yes --plan 3f9c0a1b2c3d4e5f
+    ```
+
+5. **Hoàn tác.** Mọi thứ diễn ra trên branch: xem lại bằng `git diff` và `git status`; để hoàn tác trước khi commit, chạy `git restore .` và `git clean -fd` (kiểm tra trước bằng `git clean -nd`); sau khi commit thì xoá branch.
 
 ### Tuỳ chọn của adopt.mjs
 
@@ -161,6 +228,7 @@ Script tự nhận diện stack từ `package.json` (framework, database, data a
 | `--dry-run` | — | tắt | không lưu | In plan, nguồn của từng giá trị và plan hash; không ghi gì. |
 | `--yes` | — | tắt | không lưu | Áp dụng plan đã xem bằng `--dry-run`; dừng nếu plan đã thay đổi. |
 | `--plan` | `<hash>` | plan được `--dry-run` lưu lại | không lưu | Dùng với `--yes`: yêu cầu đúng plan hash này. |
+| `--allow-unreleased` | — | tắt: `--yes` từ chối checkout standard chưa sạch hoặc không ở đúng tag release | không lưu (in ra trong output) | Cho maintainer thử thay đổi chưa release của standard: chạy từ checkout không phải bản release sạch. Được in rõ trong `--dry-run` và `--yes`. |
 | `--target` | `<dir>` | thư mục hiện tại | không lưu | Repository cần áp dụng. |
 | `--help` | — | tắt | không lưu | In danh sách này rồi thoát. |
 
@@ -207,11 +275,13 @@ Chi tiết: `docs/vi/10-versioning-and-distribution.md`.
 | `docs/vi/09-docs-automation.md` | Giữ tài liệu luôn cập nhật |
 | `docs/vi/10-versioning-and-distribution.md` | Version, ba lớp, flag khi áp dụng, PR cập nhật |
 | `docs/vi/11-adding-a-stack-fragment.md` | Cách thêm fragment cho framework, database hoặc data access |
+| `docs/vi/12-new-project.md` | Bắt đầu một dự án mới: scaffold hoặc repo rỗng, adopt, prompt cho Claude Code |
+| `templates/prompts/` | Prompt cho dự án mới (điền `CLAUDE.md`, đặc tả, plan khởi động, ticket tính năng, scaffold), dùng nguyên văn |
 | `docs/vi/ai-files-explained.md` | Giải thích bằng tiếng Việt từng file dành cho AI |
 | `templates/` | File lớp 1 đúng như repo dự án nhận được, khung `CLAUDE.md`, và `fragments/` (các stack fragment ghép được và registry của chúng) |
 | `scripts/adopt.mjs` | Script áp dụng, chạy từ repo dự án |
 | `scripts/sync-standard.mjs` | Ghi các file lớp 1 cho PR cập nhật |
-| `scripts/` (còn lại) | Công cụ kiểm tra cho repo này: parity, budget theo từng stack, JSON, sinh settings, bảng tuỳ chọn trong README, ngoại lệ audit, smoke test |
+| `scripts/` (còn lại) | Công cụ kiểm tra cho repo này: parity, budget theo từng stack, JSON, sinh settings, bảng tuỳ chọn trong README và prompt trong tài liệu 12, ngoại lệ audit, smoke test |
 | `.github/workflows/` | CI của repo này và job cập nhật khi phát hành |
 | `audit-exceptions.json` | Các cảnh báo npm audit đã chấp nhận cho công cụ dev của repo này |
 | `CHANGELOG.md` | Lịch sử phát hành |
