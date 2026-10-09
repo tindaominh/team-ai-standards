@@ -4,6 +4,18 @@ All notable changes to this standard are recorded here. Versions follow `MAJOR.M
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `adopt.mjs --yes` checks the git state of the project repository before every write, not only when it would modify or delete files. A plan that only creates files now also needs a git repository with a clean working tree, on a branch other than the default branch; otherwise it stops with exit 3 and the same message and git commands as before. `--dry-run` lists them under "Before --yes (files will be written)". Doc 12 section 5 no longer says the first adoption passes on `main`; paths a and b already commit and switch to a branch first.
+- The plan hash takes the flags in a fixed order, with repeated flags (`--carry-allow`, `--drop-allow`, `--db`, `--with`) sorted and without duplicates. `--target` is left out because the resolved directory is already hashed. A plan recorded by an earlier `--dry-run` no longer matches: run `--dry-run` again before `--yes`.
+
+### Fixed
+
+- `adopt.mjs --yes` no longer leaves a repository half-written when a write fails. It writes every file to a staging folder inside the repository, then moves them into place. On any error it rolls back every move, removes the folders it created, keeps the reviewed plan and stops with exit 1, saying that no file is half-written. If a file cannot be restored, the message lists it and where its original is. The logic is in `scripts/lib/apply-writes.mjs`.
+- The same flags typed in another order no longer give a different plan hash, so `--yes` no longer refuses them as "the plan changed".
+- `adopt.mjs` stops with exit 2, the file path and the parse error when `.claude/std/manifest.json`, `package.json` or the standard's `templates/.claude/std/settings.<profile>.json` cannot be parsed, as it already did for `.claude/project.json`. Before, these files crashed it with a stack trace and exit 1.
+- Doc 10 section 6 (en, vi) describes all four changes.
+
 ## [0.8.0] - 2026-10-08
 
 Findings from the pilot security review. Released as a minor version under doc 10 section 1: new ask rules, `CODEOWNERS` lines, a rule and documentation are new or stricter. Two changes need action in adopted repositories and are marked **Breaking**: the workflow templates now use GitHub environments, and marketplace integration moves from the common rules to an optional fragment. Existing repositories keep it automatically until they record the choice.

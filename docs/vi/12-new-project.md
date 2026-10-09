@@ -85,7 +85,7 @@ node ../team-ai-standards/scripts/adopt.mjs --yes
 ## 5. adopt kiểm tra những gì
 
 - **Checkout của standard:** `--yes` từ chối khi checkout đang chạy có file bị sửa hoặc chưa track, hoặc HEAD không nằm ở tag `v<version>` theo `package.json` của nó. `--dry-run` báo cùng vấn đề dưới dạng cảnh báo, kèm các lệnh git để sửa. `--allow-unreleased` dành cho maintainer thử thay đổi chưa release, và được in ra trong output.
-- **Repo dự án:** `--yes` từ chối working tree chưa sạch, default branch, hoặc thư mục không phải git repo **chỉ khi nó sẽ sửa file đã có**. Tạo file mới thì không có điều kiện này, nên lần adopt đầu của repo vừa scaffold hoặc repo rỗng thường chạy được cả trên `main`. Dù vậy vẫn nên dùng branch, vì thay đổi cần được review trong pull request. Lần chạy lại ở cách b có sửa file, nên cần branch sạch.
+- **Repo dự án:** `--yes` từ chối thư mục không phải git repo, working tree chưa sạch, hoặc default branch, mỗi khi nó sẽ ghi bất cứ thứ gì, kể cả khi chỉ tạo file mới. Vì vậy cách a và cách b đều commit và chuyển sang một branch trước khi chạy adopt; thay đổi được review trong pull request. Nếu một lần ghi bị lỗi, mọi thay đổi được hoàn tác và plan đã xem được giữ lại (tài liệu 10, mục 6).
 
 ## 6. Sau khi adopt
 

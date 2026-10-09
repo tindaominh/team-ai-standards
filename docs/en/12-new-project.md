@@ -85,7 +85,7 @@ node ../team-ai-standards/scripts/adopt.mjs --yes
 ## 5. What adopt checks
 
 - **The standard checkout:** `--yes` refuses when the checkout it runs from has changed or untracked files, or HEAD is not on the tag `v<version>` of its `package.json`. `--dry-run` shows the same problem as a warning with the git commands that fix it. `--allow-unreleased` is for maintainers testing unreleased changes and is printed in the output.
-- **The project repository:** `--yes` refuses a dirty working tree, the default branch, or a directory that is not a git repository **only when it would modify existing files**. Creating new files has no such condition, so the first adoption of a freshly scaffolded or empty repository usually passes on `main`. Use a branch anyway: the change is reviewed in a pull request. The re-run in path b modifies files, so it needs the clean branch.
+- **The project repository:** `--yes` refuses a directory that is not a git repository, a dirty working tree, or the default branch, whenever it would write anything, even when it only creates files. Paths a and b commit and switch to a branch before adopt for this reason; the change is reviewed in a pull request. If a write fails, every change is rolled back and the reviewed plan is kept (doc 10, section 6).
 
 ## 6. After adoption
 
