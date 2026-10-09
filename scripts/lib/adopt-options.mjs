@@ -177,6 +177,16 @@ export function parseArgs(argv) {
   return { opts, errors };
 }
 
+// The parsed options that decide a plan, for its hash: in the order of OPTIONS, repeated
+// options sorted and without duplicates, so the order they are typed in does not matter.
+// Leaves out the options that only control the run (dry-run, yes, plan, help) and
+// --target (the hash has the resolved target directory).
+const NOT_HASHED = new Set(['dry-run', 'yes', 'plan', 'help', 'target']);
+export function canonicalFlags(opts) {
+  return OPTIONS.filter((o) => !NOT_HASHED.has(o.name) && opts[o.name] !== undefined)
+    .map((o) => [o.name, o.repeat ? [...new Set(opts[o.name])].sort() : opts[o.name]]);
+}
+
 const plain = (text) => text.replace(/`/g, '').replace(/\\\|/g, '|');
 const syntax = (o) => `--${o.name}${o.value ? ` ${plain(o.value())}` : ''}`;
 

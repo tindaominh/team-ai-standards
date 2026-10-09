@@ -4,10 +4,11 @@
 // Works only in temporary directories.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { OPTIONS, helpText, optionsTable } from './lib/adopt-options.mjs';
+import { OPTIONS, canonicalFlags, helpText, optionsTable, parseArgs } from './lib/adopt-options.mjs';
+import { applyWrites } from './lib/apply-writes.mjs';
 import { standardRelease } from './lib/git.mjs';
 import { formatChain, resolveChain, splitCommands } from './lib/script-chain.mjs';
 import { GUARD_FILES, codeownersBlock } from './lib/standard.mjs';
@@ -130,7 +131,14 @@ try {
   };
   const pkg = (deps, scripts = {}) => JSON.stringify({ name: 'svc', scripts, dependencies: Object.fromEntries(deps.map((d) => [d, '1.0.0'])) });
   const listFiles = (dir) => execFileSync('find', ['.', '-type', 'f', '-not', '-path', './.git/*'], { cwd: dir, encoding: 'utf8' }).split('\n').filter(Boolean).sort();
-  const adopt = (dir, ...a) => run('node', [ADOPT, ...a], { cwd: dir });
+  // --yes writes only in a git repository on a clean branch: a fixture that is not a git
+  // repository yet becomes one (its files committed, on a branch) before its first --yes.
+  // Tests of the git refusals call adoptRaw.
+  const adoptRaw = (dir, ...a) => run('node', [ADOPT, ...a], { cwd: dir });
+  const adopt = (dir, ...a) => {
+    if (a.includes('--yes') && !existsSync(join(dir, '.git'))) gitRepo(dir);
+    return adoptRaw(dir, ...a);
+  };
   // Review, then apply exactly the reviewed plan. A fresh repository needs the CODEOWNERS project owner.
   const OWNER = ['--repo-owner', '@fixture-org/svc-team'];
   const apply = (dir, ...a) => {
@@ -142,7 +150,7 @@ try {
   const gitRepo = (dir, branch = 'chore/adopt') => {
     gitIn(dir, 'init', '-q');
     gitIn(dir, 'add', '-A');
-    gitIn(dir, 'commit', '-q', '-m', 'base');
+    gitIn(dir, 'commit', '-q', '--allow-empty', '-m', 'base');
     if (branch) gitIn(dir, 'switch', '-q', '-c', branch);
     return dir;
   };
@@ -562,7 +570,7 @@ try {
   };
   writeFileSync(join(STD_REL, 'notes.txt'), 'local change\n');
   releaseCase('dirty standard checkout', 'stash push -u');
-  const overrideDir = newRepo('rel-override', nestPkg);
+  const overrideDir = gitRepo(newRepo('rel-override', nestPkg));
   const overDry = adoptRel(overrideDir, ...OWNER, '--allow-unreleased', '--dry-run');
   const overYes = adoptRel(overrideDir, ...OWNER, '--allow-unreleased', '--yes');
   check('release: --allow-unreleased is printed in --dry-run', overDry.status === 0 && overDry.stdout.includes('UNRELEASED STANDARD (--allow-unreleased)') && !overDry.stdout.includes('--yes will refuse'), overDry.stdout);
@@ -603,7 +611,9 @@ try {
   compose(emptyRepo);
   writeFileSync(join(emptyRepo, 'package.json'), pkg(nestDeps, nestScripts));
   writeFileSync(join(emptyRepo, 'pnpm-lock.yaml'), '');
-  gitRepo(emptyRepo);
+  // Doc 12 path b: commit the adoption and the skeleton, then run adopt again on the branch.
+  gitIn(emptyRepo, 'add', '-A');
+  gitIn(emptyRepo, 'commit', '-q', '-m', 'scaffold');
   const refillDry = adopt(emptyRepo, '--dry-run');
   check('re-run: --dry-run lists the commands filled from package.json', refillDry.status === 0 && refillDry.stdout.includes('Commands filled from package.json') && /build\s+pnpm build\s+← "build"/.test(refillDry.stdout) && !/lint\s+pnpm lint/.test(refillDry.stdout), refillDry.stdout + refillDry.stderr);
   const refillYes = adopt(emptyRepo, '--yes');
@@ -692,12 +702,89 @@ try {
   const envSync = run('node', [SYNC, '--target', envRepo]);
   check('sync: the update summary asks to check the environments before merging', envSync.status === 0 && envSync.stdout.includes('Workflows reference GitHub environments: `docs-notify`'), envSync.stdout + envSync.stderr);
 
+  // 2o. git state for every write, staged writes with rollback, flag order, unparseable JSON
+  const createOnly = () => ({ 'package.json': pkg(nestDeps, nestScripts) });
+  const outsideGit = newRepo('git-none', createOnly());
+  const outsideDry = adoptRaw(outsideGit, '--stack', 'nestjs-mysql', ...OWNER, '--dry-run');
+  check('adopt --dry-run: a create-only plan lists the git fixes under "Before --yes"', outsideDry.status === 0 && outsideDry.stdout.includes('Before --yes (files will be written)') && outsideDry.stdout.includes('not a git repository'), outsideDry.stdout);
+  const outsideBefore = listFiles(outsideGit);
+  const outsideYes = adoptRaw(outsideGit, '--stack', 'nestjs-mysql', ...OWNER, '--yes');
+  check('adopt --yes: a create-only plan outside git is refused', outsideYes.status === 3 && outsideYes.stderr.includes('git is not in a safe state') && same(listFiles(outsideGit), outsideBefore), outsideYes.stdout + outsideYes.stderr);
+  const onDefault = gitRepo(newRepo('git-main', createOnly()), null);
+  adoptRaw(onDefault, '--stack', 'nestjs-mysql', ...OWNER, '--dry-run');
+  const onDefaultYes = adoptRaw(onDefault, '--stack', 'nestjs-mysql', ...OWNER, '--yes');
+  check('adopt --yes: a create-only plan on the default branch is refused', onDefaultYes.status === 3 && onDefaultYes.stdout.includes('is the default branch') && !existsSync(join(onDefault, '.claude/project.json')), onDefaultYes.stdout + onDefaultYes.stderr);
+  const untracked = gitRepo(newRepo('git-untracked', createOnly()));
+  writeFileSync(join(untracked, 'notes.txt'), 'draft\n');
+  adoptRaw(untracked, '--stack', 'nestjs-mysql', ...OWNER, '--dry-run');
+  const untrackedYes = adoptRaw(untracked, '--stack', 'nestjs-mysql', ...OWNER, '--yes');
+  check('adopt --yes: a create-only plan with an untracked file is refused', untrackedYes.status === 3 && untrackedYes.stdout.includes('working tree is not clean') && !existsSync(join(untracked, '.claude/project.json')), untrackedYes.stdout + untrackedYes.stderr);
+
+  // A write that fails halfway: a folder the plan writes into is read-only (root ignores the mode).
+  if (process.getuid && process.getuid() === 0) {
+    skip('adopt --yes: a failed write rolls back every change and keeps the plan', 'running as root, so a read-only folder does not fail');
+    skip('applyWrites: restores created, modified and deleted files after a failed move', 'running as root');
+  } else {
+    const rb = gitRepo(newRepo('rollback', { ...createOnly(), 'CLAUDE.md': '# Orders\n\nHandles orders.\n', '.github/pull_request_template.md': '## Summary\n', '.claude/rules/std/.keep': '' }));
+    const rbFlags = ['--stack', 'nestjs-mysql', ...OWNER];
+    const rbDry = adopt(rb, ...rbFlags, '--dry-run');
+    const rbBefore = listFiles(rb);
+    const rbSha = Object.fromEntries(rbBefore.map((f) => [f, sha(rb, f)]));
+    chmodSync(join(rb, '.claude/rules/std'), 0o555);
+    const rbYes = adopt(rb, ...rbFlags, '--yes');
+    chmodSync(join(rb, '.claude/rules/std'), 0o755);
+    const rbAfter = listFiles(rb);
+    check('adopt --yes: a failed write exits 1 and says every change was rolled back', rbDry.status === 0 && rbYes.status === 1 && rbYes.stderr.includes('rolled back every change: no file is half-written') && rbYes.stderr.includes('The reviewed plan is kept'), rbYes.stdout + rbYes.stderr);
+    check('adopt --yes: after a failed write the repository is byte for byte as before', same(rbAfter, rbBefore) && rbAfter.every((f) => sha(rb, f) === rbSha[f]) && gitIn(rb, 'status', '--porcelain') === '', JSON.stringify(rbAfter));
+    const rbAgain = adopt(rb, ...rbFlags, '--yes');
+    check('adopt --yes: the reviewed plan is kept, so --yes succeeds once the cause is fixed', rbAgain.status === 0 && rbAgain.stdout.includes(`Applied plan ${/Plan hash: ([0-9a-f]{16})/.exec(rbDry.stdout)[1]}`), rbAgain.stdout + rbAgain.stderr);
+
+    const aw = newRepo('apply-writes', { 'keep.txt': 'old\n', 'gone.txt': 'bye\n', 'locked/.keep': '' });
+    chmodSync(join(aw, 'locked'), 0o555);
+    const awResult = applyWrites(aw, [
+      { path: 'gone.txt', action: 'delete' },
+      { path: 'keep.txt', action: 'modify', after: 'new\n' },
+      { path: 'locked/x.txt', action: 'create', after: 'x\n' },
+      { path: 'new/deep/y.txt', action: 'create', after: 'y\n' }
+    ].sort((a, b) => a.path.localeCompare(b.path)));
+    chmodSync(join(aw, 'locked'), 0o755);
+    check('applyWrites: restores created, modified and deleted files after a failed move', !awResult.ok && awResult.failedPath === 'locked/x.txt' && awResult.restoreFailures.length === 0 && same(listFiles(aw), ['./gone.txt', './keep.txt', './locked/.keep']) && readFileSync(join(aw, 'keep.txt'), 'utf8') === 'old\n' && !existsSync(join(aw, 'new')) && !readdirSync(aw).some((n) => n.startsWith('.std-adopt-')), JSON.stringify(awResult) + JSON.stringify(listFiles(aw)));
+  }
+
+  // The plan hash does not depend on the order the flags are typed in.
+  const canon = (...a) => JSON.stringify(canonicalFlags(parseArgs(a).opts));
+  check('canonicalFlags: repeated options sorted, comma and repeat forms equal', canon('--with', 'aws', '--with', 'marketplace') === canon('--with', 'marketplace,aws') && canon('--carry-allow', 'A', '--carry-allow', 'B') === canon('--carry-allow', 'B', '--carry-allow', 'A'));
+  check('canonicalFlags: fixed order, run-only options and --target left out', canon('--profile', 'strict', '--stack', 'nestjs-mysql', '--dry-run') === canon('--yes', '--plan', 'abc', '--target', '.', '--stack', 'nestjs-mysql', '--profile', 'strict'));
+  const order = gitRepo(newRepo('flag-order', { 'package.json': pkg(nestDeps), '.claude/settings.json': `${JSON.stringify({ permissions: { allow: ['Bash(make test *)', 'Bash(ls *)'] } })}\n`, '.github/CODEOWNERS': '* @org/team\n' }));
+  const orderDry = adopt(order, '--stack', 'nestjs-mysql', '--carry-allow', 'Bash(make test *)', '--carry-allow', 'Bash(ls *)', '--drop-allow-rest', '--dry-run');
+  const orderYes = adopt(order, '--drop-allow-rest', '--carry-allow', 'Bash(ls *)', '--carry-allow', 'Bash(make test *)', '--stack', 'nestjs-mysql', '--yes');
+  check('adopt --yes: the same flags in another order apply the reviewed plan', orderDry.status === 0 && orderYes.status === 0, orderYes.stdout + orderYes.stderr);
+
+  // JSON files that cannot be parsed stop with their path and exit 2, writing nothing.
+  const badPkg = newRepo('bad-package', { 'package.json': '{ "name": ' });
+  const badPkgRun = adoptRaw(badPkg, '--stack', 'nestjs-mysql', ...OWNER, '--dry-run');
+  check('adopt: an unparseable package.json stops with exit 2 and the path', badPkgRun.status === 2 && badPkgRun.stderr.includes('package.json cannot be parsed (') && same(listFiles(badPkg), ['./package.json']), badPkgRun.stderr);
+  const badManifest = apply(newRepo('bad-manifest', createOnly()), '--stack', 'nestjs-mysql');
+  const bm = join(work, 'bad-manifest');
+  gitIn(bm, 'add', '-A');
+  gitIn(bm, 'commit', '-q', '-m', 'adopt');
+  writeFileSync(join(bm, '.claude/std/manifest.json'), '{ broken');
+  const bmBefore = listFiles(bm);
+  const bmRun = adopt(bm, '--dry-run');
+  check('adopt: an unparseable manifest stops with exit 2 and the path', badManifest.status === 0 && bmRun.status === 2 && bmRun.stderr.includes('.claude/std/manifest.json cannot be parsed (') && same(listFiles(bm), bmBefore), bmRun.stdout + bmRun.stderr);
+  const STD_BAD = copyStandard(join(work, 'standard-bad-settings'));
+  if (PLACEHOLDER_RE.test(blockOf(readFileSync(join(T, '.github/CODEOWNERS'), 'utf8')))) setOwners(STD_BAD, '@fixture-org/ai-standard-owners');
+  writeFileSync(join(STD_BAD, 'templates/.claude/std/settings.strict.json'), '{ "permissions": ');
+  const badSettings = newRepo('bad-profile-settings', createOnly());
+  const bsRun = run('node', [join(STD_BAD, 'scripts/adopt.mjs'), '--stack', 'nestjs-mysql', ...OWNER, '--dry-run'], { cwd: badSettings });
+  check('adopt: an unparseable settings.<profile>.json stops with exit 2 and the path', bsRun.status === 2 && bsRun.stderr.includes(`${join(STD_BAD, 'templates/.claude/std/settings.strict.json')} cannot be parsed (`) && bsRun.stderr.includes('check out its release tag again') && same(listFiles(badSettings), ['./package.json']), bsRun.stderr);
+
   // 2k. the real standard (not a fixture) adopts and syncs when its CODEOWNERS names a real owner
   const liveBlock = blockOf(readFileSync(join(T, '.github/CODEOWNERS'), 'utf8'));
   if (PLACEHOLDER_RE.test(liveBlock)) {
     skip('real standard: adopt and sync succeed with a real CODEOWNERS owner', 'templates/.github/CODEOWNERS still has placeholder owners');
   } else {
-    const live = newRepo('live-standard');
+    const live = gitRepo(newRepo('live-standard'));
     // This checkout is a release only when HEAD carries its tag; while a change is developed it is not.
     const liveFlags = standardRelease(ROOT).problems.length ? ['--allow-unreleased'] : [];
     run('node', [join(ROOT, 'scripts/adopt.mjs'), '--stack', 'nestjs-mysql', ...OWNER, ...liveFlags, '--dry-run'], { cwd: live });

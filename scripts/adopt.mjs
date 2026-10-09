@@ -16,7 +16,11 @@
 //   template and CODEOWNERS get an appended block, settings.json is regenerated with
 //   the repository's own stricter rules moved into .claude/project.json.
 // - Permissions are never loosened automatically.
-// - Existing files are modified only on a clean git working tree, off the default branch.
+// - Files are written only on a clean git working tree, off the default branch. They are
+//   staged first and moved into place; on any error every change is rolled back and the
+//   reviewed plan is kept.
+// - The plan hash takes the flags in a fixed order, so typing them in another order gives
+//   the same plan. A JSON file that cannot be parsed stops adoption with its path (exit 2).
 // - --yes runs only from a released standard checkout (clean, HEAD on tag v<version>),
 //   unless --allow-unreleased is passed, which is printed in the output.
 // - Decisions that need a human stop --yes. *.proposed files exist only for the
@@ -24,14 +28,15 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { helpText, parseArgs } from './lib/adopt-options.mjs';
+import { join, resolve } from 'node:path';
+import { canonicalFlags, helpText, parseArgs } from './lib/adopt-options.mjs';
 import { buildPlan } from './lib/adopt-plan.mjs';
+import { applyWrites } from './lib/apply-writes.mjs';
 import { unifiedDiff } from './lib/diff.mjs';
 import { formatChain } from './lib/script-chain.mjs';
 import { gitProblems, standardRelease } from './lib/git.mjs';
 import {
-  COMMAND_CANDIDATES, DIMENSIONS, FLAG_FOR, ROOT, codeownersPlaceholders, describe, detect, expandAlias, hash,
+  COMMAND_CANDIDATES, DIMENSIONS, FLAG_FOR, ROOT, T, codeownersPlaceholders, describe, detect, expandAlias, hash,
   ENVIRONMENT_NOTE, isUnfilledClaude, keptOptional, normalize, registry, summary, validate, version, workflowEnvironments
 } from './lib/standard.mjs';
 
@@ -59,6 +64,13 @@ if (placeholders.length) {
 }
 const exists = (p) => existsSync(join(TARGET, p));
 const read = (p) => readFileSync(join(TARGET, p), 'utf8');
+const readJson = (file, shown, fix = 'fix it first.') => {
+  try {
+    return JSON.parse(readFileSync(file, 'utf8'));
+  } catch (err) {
+    return die(2, `${shown} cannot be parsed (${err.message}); ${fix}`);
+  }
+};
 
 // --- the standard checkout this runs from must be a clean release ----------------------------
 const STD_ROOT = resolve(ROOT);
@@ -72,11 +84,7 @@ if (YES && release.problems.length && !UNRELEASED) {
 // --- a previous adoption: its stored configuration is the starting point -------------------
 let previous = null;
 if (exists('.claude/project.json')) {
-  try {
-    previous = JSON.parse(read('.claude/project.json'));
-  } catch (err) {
-    die(2, `.claude/project.json cannot be parsed (${err.message}); fix it first.`);
-  }
+  previous = readJson(join(TARGET, '.claude/project.json'), '.claude/project.json');
   const installed = exists('.claude/STANDARD_VERSION') ? read('.claude/STANDARD_VERSION').trim() : 'unknown';
   if (installed !== version()) {
     die(3, `this repository uses version ${installed} of the standard and this is ${version()}. Update it first (the update pull request, or scripts/sync-standard.mjs --target <dir>); adopt then changes its configuration.`);
@@ -93,9 +101,16 @@ function pick(name, flag, stored, fallback, fallbackSource = 'default') {
 }
 const profile = pick('profile', opts.profile, previous?.profile, 'strict');
 if (!['strict', 'standard'].includes(profile)) die(2, '--profile must be strict (client repositories, default) or standard (internal repositories only).');
+// Parsed here so a broken file stops with its path; the libraries read them again.
+const profileSettings = join(T, `.claude/std/settings.${profile}.json`);
+readJson(profileSettings, profileSettings, 'the standard checkout is damaged: check out its release tag again.');
+const manifestFiles = previous && exists('.claude/std/manifest.json')
+  ? Object.keys(readJson(join(TARGET, '.claude/std/manifest.json'), '.claude/std/manifest.json').files || {})
+  : null;
+const pkgJson = exists('package.json') ? readJson(join(TARGET, 'package.json'), 'package.json') : null;
 const repoOwner = pick('repo-owner', opts['repo-owner'], previous?.repoOwner ?? undefined, null);
 if (repoOwner !== null && !/^@[A-Za-z0-9-]+(\/[A-Za-z0-9._-]+)?$/.test(repoOwner)) die(2, `--repo-owner must be @user or @org/team (got ${JSON.stringify(repoOwner)}).`);
-const manifestDocs = previous && exists('.claude/std/manifest.json') && Object.keys(JSON.parse(read('.claude/std/manifest.json')).files || {}).includes('scripts/generate-docs.mjs');
+const manifestDocs = Boolean(manifestFiles && manifestFiles.includes('scripts/generate-docs.mjs'));
 const withDocs = pick('with-docs', opts['with-docs'], previous ? (previous.optionalGroups ? previous.optionalGroups.includes('docs') : manifestDocs) : undefined, false);
 
 const detected = detect(TARGET);
@@ -116,8 +131,8 @@ if (opts.with) { selection.optional = opts.with; sources.optional = 'flag'; }
 if (opts['without-optional']) { selection.optional = []; sources.optional = 'flag'; }
 selection = normalize(selection);
 // Optional fragments that were common rules before 0.8.0: a re-run records them unless a flag decides.
-if (previous && sources.optional === 'project.json' && exists('.claude/std/manifest.json')) {
-  const kept = keptOptional(Object.keys(JSON.parse(read('.claude/std/manifest.json')).files || {}), selection);
+if (previous && sources.optional === 'project.json' && manifestFiles) {
+  const kept = keptOptional(manifestFiles, selection);
   if (kept.length) {
     selection = normalize({ ...selection, optional: [...selection.optional, ...kept] });
     sources.optional = `project.json + ${kept.join(', ')} (installed before it became optional)`;
@@ -164,7 +179,7 @@ if (!DRY && !YES) {
 // --- commands: found in package.json on first adoption; on a later run the stored ones,
 // with only those still null filled from package.json (a set command is never replaced) --------
 function commandsFromPackage() {
-  const pkg = exists('package.json') ? JSON.parse(read('package.json')) : null;
+  const pkg = pkgJson;
   const scripts = (pkg && pkg.scripts) || {};
   const manager = exists('pnpm-lock.yaml') ? 'pnpm' : exists('yarn.lock') ? 'yarn' : 'npm';
   const runScript = (name) => (manager === 'npm' ? (name === 'test' ? 'npm test' : `npm run ${name}`) : `${manager} ${name}`);
@@ -201,9 +216,8 @@ const { actions, decisions, suggestions, merge, proposals } = buildPlan({
   target: TARGET, selection, profile, repoOwner, withDocs, commands, acknowledgedUnsupported, allowChoices, propose: PROPOSE, previous
 });
 const writes = actions.filter((a) => a.action !== 'same');
-const modifies = writes.some((a) => a.action === 'modify' || a.action === 'delete');
 const open = decisions.filter((d) => !(PROPOSE && d.proposable));
-const flags = argv.filter((a, i) => !['--dry-run', '--yes', '--plan'].includes(a) && argv[i - 1] !== '--plan');
+const flags = canonicalFlags(opts);
 const planHash = hash(JSON.stringify({
   version: version(), target: TARGET, flags,
   actions: writes.map((a) => [a.path, a.action, a.before === undefined ? null : hash(a.before), a.after === undefined ? null : hash(a.after)]),
@@ -275,9 +289,9 @@ if (open.length) {
   console.log('\nDecisions required (--yes refuses until they are resolved):');
   for (const d of open) console.log(`  - ${d.file} ${d.what}: ${d.resolve}`);
 }
-const git = modifies ? gitProblems(TARGET) : [];
+const git = writes.length ? gitProblems(TARGET) : [];
 if (git.length) {
-  console.log('\nBefore --yes (existing files will be modified):');
+  console.log('\nBefore --yes (files will be written):');
   for (const g of git) console.log(`  - ${g.what}. Fix:\n${g.fix.map((c) => `      ${c}`).join('\n')}`);
 }
 console.log(`\nPlan hash: ${planHash}`);
@@ -299,13 +313,13 @@ if (!expected) die(3, 'no reviewed plan for this repository; nothing was written
 if (expected !== planHash) die(3, `the plan changed since it was reviewed (reviewed ${expected}, now ${planHash}): a file, a flag or the standard changed. Nothing was written. Run --dry-run again and review the new plan.`);
 if (git.length) die(3, 'existing files would be modified, but git is not in a safe state; nothing was written. Run the commands under "Before --yes" above.');
 
-for (const a of writes) {
-  if (a.action === 'delete') {
-    rmSync(join(TARGET, a.path));
-    continue;
+const applied = applyWrites(TARGET, writes);
+if (!applied.ok) {
+  const cause = `writing ${applied.failedPath} failed (${applied.error.message})`;
+  if (!applied.restoreFailures.length) {
+    die(1, `${cause}; rolled back every change: no file is half-written and the repository is as before. The reviewed plan is kept: fix the cause and run --yes again.`);
   }
-  mkdirSync(dirname(join(TARGET, a.path)), { recursive: true });
-  writeFileSync(join(TARGET, a.path), a.after);
+  die(1, `${cause}, and these files could not be restored:\n${applied.restoreFailures.map((f) => `  - ${f.path}${f.backup ? ` (original: ${f.backup})` : ''}`).join('\n')}\nRestore them from the originals listed, or with git restore and git clean (check first with git clean -nd). The reviewed plan is kept.`);
 }
 rmSync(recordFile, { force: true });
 const verify = spawnSync('node', [join(TARGET, '.claude/std/compose-settings.mjs'), '--root', TARGET, '--check'], { encoding: 'utf8' });
